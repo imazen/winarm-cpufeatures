@@ -1,0 +1,29 @@
+[package]
+name = "winarm-cpufeatures"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Imazen <support@imazen.io>"]
+license = "MIT OR Apache-2.0"
+description = "Fill the Windows-on-ARM gap in is_aarch64_feature_detected! — detect rdm, fp16, bf16, i8mm, paca/pacg, flagm, dpb, sve, sme, and everything else Microsoft's IsProcessorFeaturePresent won't tell you."
+repository = "https://github.com/imazen/winarm-cpufeatures"
+documentation = "https://docs.rs/winarm-cpufeatures"
+readme = "README.md"
+keywords = ["aarch64", "arm64", "cpu", "windows", "simd"]
+categories = ["hardware-support", "no-std", "os::windows-apis"]
+
+[lib]
+
+[target.'cfg(all(target_os = "windows", target_arch = "aarch64"))'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[features]
+default = []
+# Enable the SVE execution test in `tests/sve_execution.rs`. Requires
+# nightly rustc (for `aarch64_unstable_target_feature`).
+nightly-sve = []
