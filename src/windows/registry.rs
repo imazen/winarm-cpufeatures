@@ -109,11 +109,17 @@ fn isar0_decode(isar0: u64, f: &mut Features) {
     if field(isar0, 32, 4) >= 1 {
         *f = f.with(Feature::Sha3);
     }
-    // SM4 bits 43:40.
+    // SM4 bits 43:40. Per ARM ARM, a non-zero SM4 field implies both
+    // SM3 and SM4 instructions are implemented.
     if field(isar0, 40, 4) >= 1 {
         *f = f.with(Feature::Sm4);
     }
-    // TS (FlagM/FlagM2) bits 55:52.
+    // FHM bits 51:48 — FP16 fused multiply-accumulate long variants.
+    // Not reachable via IPFP; registry is the only source on Windows.
+    if field(isar0, 48, 4) >= 1 {
+        *f = f.with(Feature::Fhm);
+    }
+    // TS (FlagM/FlagM2) bits 55:52. Encoding: 1=FlagM, 2=FlagM2.
     let ts = field(isar0, 52, 4);
     if ts >= 1 {
         *f = f.with(Feature::FlagM);

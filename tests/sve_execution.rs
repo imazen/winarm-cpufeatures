@@ -5,27 +5,27 @@
 //! On a CPU without SVE this faults with SIGILL; on a correctly-detecting
 //! runner, it returns a positive power-of-two byte count.
 //!
-//! Gated by the `nightly-sve` cargo feature + nightly rustc because
-//! `#[target_feature(enable = "sve")]` is unstable on aarch64. Compile
-//! with `RUSTFLAGS="-C target-feature=+sve"` to make the SVE code path
-//! unconditionally available.
+//! Gated by the `nightly-sve` cargo feature. Compile with
+//! `RUSTFLAGS="-C target-feature=+sve"` so SVE instructions are accepted
+//! by the assembler. The inline asm avoids the unstable `repr(scalable)`
+//! machinery entirely.
 
 #![cfg(all(target_arch = "aarch64", feature = "nightly-sve"))]
-#![feature(aarch64_unstable_target_feature)]
 
 use winarm_cpufeatures::detected_full;
 
-/// SVE CNTB instruction — returns the number of bytes in an SVE vector. On
-/// any SVE-capable CPU this is one of {16, 32, 64, 128, 256} (i.e. 128 bits
-/// up to 2048 bits of vector width). Inline asm keeps us clear of the
-/// unstable `repr(scalable)` machinery.
-#[target_feature(enable = "sve")]
+/// Execute SVE `cntb` — returns the number of bytes in an SVE vector.
+/// Any SVE-capable CPU returns one of {16, 32, 64, 128, 256} (128b..2048b).
+/// Inline asm keeps SVE types out of our Rust signatures.
 unsafe fn sve_cntb() -> u64 {
     let out: u64;
-    // SAFETY: `cntb` is an unconditional SVE instruction; nothing to go
-    // wrong as long as the CPU implements SVE.
+    // SAFETY: caller guarantees SVE is implemented. `cntb` is side-effect-free.
     unsafe {
-        core::arch::asm!("cntb {x}", x = out(reg) out, options(nomem, nostack, preserves_flags));
+        core::arch::asm!(
+            "cntb {x}",
+            x = out(reg) out,
+            options(nomem, nostack, preserves_flags),
+        );
     }
     out
 }
@@ -36,8 +36,8 @@ fn sve_detect_matches_execution() {
         eprintln!("sve not detected on this CPU — skipping execution check");
         return;
     }
-    // SAFETY: detected_full!("sve") confirmed SVE is present; the target
-    // feature attribute guarantees the compiler emits valid SVE encoding.
+    // SAFETY: detected_full!("sve") confirmed SVE is present; RUSTFLAGS
+    // target-feature=+sve makes the assembler accept the CNTB encoding.
     let vl = unsafe { sve_cntb() };
     assert!(vl > 0, "CNTB returned zero");
     assert!(
