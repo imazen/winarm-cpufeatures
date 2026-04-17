@@ -96,6 +96,9 @@ pub(crate) fn fill(f: &mut Features) {
     if let Some(pfr1) = r.aa64pfr1 {
         pfr1_decode(pfr1, f);
     }
+    if let Some(mmfr2) = r.aa64mmfr2 {
+        mmfr2_decode(mmfr2, f);
+    }
 }
 
 /// ID_AA64ISAR0_EL1 field layout (ARM ARM D19.2.60).
@@ -218,6 +221,14 @@ fn pfr0_decode(pfr0: u64, f: &mut Features) {
     // DIT bits 51:48.
     if field(pfr0, 48, 4) >= 1 {
         *f = f.with(Feature::Dit);
+    }
+}
+
+/// ID_AA64MMFR2_EL1 field layout (ARM ARM D19.2.84).
+fn mmfr2_decode(mmfr2: u64, f: &mut Features) {
+    // AT bits 35:32 — non-zero implies FEAT_LSE2 (Large System Extensions 2).
+    if field(mmfr2, 32, 4) >= 1 {
+        *f = f.with(Feature::Lse2);
     }
 }
 

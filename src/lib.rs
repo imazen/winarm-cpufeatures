@@ -65,6 +65,10 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
+// On nightly rustc, opt into the stdarch_aarch64_feature_detection gate
+// so we can delegate the 32 unstable feature names. `winarm_rustc_nightly`
+// is set by build.rs when rustc reports a nightly version.
+#![cfg_attr(winarm_rustc_nightly, feature(stdarch_aarch64_feature_detection))]
 
 mod cache;
 mod detect;

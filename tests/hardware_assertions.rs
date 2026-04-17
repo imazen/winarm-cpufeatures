@@ -37,6 +37,7 @@ fn neoverse_n2() {
         "sha3",
         "sm4",
         "lse",
+        "lse2",
         "rcpc",
         "rcpc2",
         "rdm",
@@ -78,7 +79,6 @@ fn neoverse_n2() {
         "mte",
         "bti",
         "rcpc3",
-        "lse2",
         "lse128",
         "rand",
     ] {

@@ -139,7 +139,8 @@ pub(crate) fn stdarch_delegate() -> Features {
         "lse128"       => Lse128,
         "lut"          => Lut,
         "mops"         => Mops,
-        "pauth_lr"     => PauthLr,
+        // stdarch's literal uses a dash; our user-facing name uses an underscore.
+        "pauth-lr"     => PauthLr,
         "rcpc3"        => Rcpc3,
         "sme"          => Sme,
         "sme2"         => Sme2,
