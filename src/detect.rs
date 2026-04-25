@@ -21,6 +21,7 @@ use crate::cache::Features;
 use crate::features::Feature;
 
 /// Cheap probe — no registry reads.
+#[allow(clippy::needless_return, reason = "cfg-conditional bodies — explicit returns keep each branch self-contained")]
 pub(crate) fn probe_fast() -> Features {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
@@ -40,12 +41,18 @@ pub(crate) fn probe_fast() -> Features {
     }
 }
 
-/// Full probe — IPFP + registry ID-register reads on Windows.
+/// Full probe — IPFP plus, when the `registry` Cargo feature is enabled,
+/// `HKLM\…\CentralProcessor\0\CP <hex>` ID-register reads on Windows.
+///
+/// Without `registry` this is identical to [`probe_fast`]; the
+/// `Registry`-classified feature names report `false`.
+#[allow(clippy::needless_return, reason = "cfg-conditional bodies — explicit returns keep each branch self-contained")]
 pub(crate) fn probe_full() -> Features {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
         let mut f = Features::EMPTY;
         crate::windows::fill_ipfp(&mut f);
+        #[cfg(feature = "registry")]
         crate::windows::fill_registry(&mut f);
         return f;
     }

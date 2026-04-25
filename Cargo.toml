@@ -1,11 +1,11 @@
 [package]
 name = "winarm-cpufeatures"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Imazen <support@imazen.io>"]
 license = "MIT OR Apache-2.0"
-description = "Fill the Windows-on-ARM gap in is_aarch64_feature_detected! — detect rdm, fp16, bf16, i8mm, paca/pacg, flagm, dpb, sve, sme, and everything else Microsoft's IsProcessorFeaturePresent won't tell you."
+description = "Fill the Windows-on-ARM gap in is_aarch64_feature_detected! — wires every PF_ARM_* constant from Windows SDK 26100, derives FEAT_RDM the same way .NET 10 does, and (optionally, behind the `registry` feature) reads the AArch64 ID-register snapshots Windows publishes in the registry to cover the ~33 names Microsoft has never exposed via IsProcessorFeaturePresent."
 repository = "https://github.com/imazen/winarm-cpufeatures"
 documentation = "https://docs.rs/winarm-cpufeatures"
 readme = "README.md"
@@ -24,6 +24,14 @@ windows-sys = { version = "0.61.2", features = [
 
 [features]
 default = []
+# Enable HKLM\…\CentralProcessor\0\CP <hex> registry reads for the ~33
+# stdarch feature names Microsoft has never exposed via IsProcessorFeaturePresent
+# (fhm, fcma, frintts, paca, pacg, bti, dpb/dpb2, mte, mops, dit, sb, ssbs,
+# flagm/flagm2, rand, cssc, wfxt, hbc, sm4, rcpc2/rcpc3, pauth_lr, lse128,
+# tme, ecv, lut, faminmax, fp8*, fpmr). Adds one RegOpenKeyExW + a handful
+# of RegGetValueW calls on first probe; cached after that. Off by default —
+# matches what .NET 10 / pytorch-cpuinfo / Microsoft's own Windows runtime ship.
+registry = []
 # Enable the SVE execution test in `tests/sve_execution.rs`. Requires
 # nightly rustc (for `aarch64_unstable_target_feature`).
 nightly-sve = []

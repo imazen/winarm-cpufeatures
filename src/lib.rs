@@ -4,33 +4,48 @@
 //! ## Why this exists
 //!
 //! On `aarch64-pc-windows-msvc` with Rust 1.85, `is_aarch64_feature_detected!`
-//! is a thin wrapper around `IsProcessorFeaturePresent`. Microsoft only
-//! defines ~17 `PF_ARM_*` constants, so just **10 of the 73** feature names
-//! the macro accepts get probed — every other call returns `false` even on
-//! silicon that physically supports the feature.
+//! is a thin wrapper around `IsProcessorFeaturePresent` (IPFP). Microsoft
+//! defines 56 `PF_ARM_*` constants in Windows SDK 10.0.26100.0 but the
+//! upstream stdarch backend only wires 17 of them, and Microsoft has never
+//! exposed ~30 stdarch feature names through any `PF_ARM_*` constant at all
+//! — including the headline miss `rdm`, which is mandatory on every
+//! Windows-on-ARM CPU.
 //!
-//! Closing the rest of the gap requires reading
-//! `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`, which the
-//! Windows kernel populates with cached `ID_AA64*_EL1` system-register
-//! snapshots at boot. This is undocumented-but-stable since Windows 10 1709
-//! and is the approach used by LLVM, pytorch/cpuinfo, and Microsoft's own
-//! ONNX Runtime.
+//! ## Two layers, the second behind a feature flag
+//!
+//! 1. **Always-on (the IPFP layer).** Wires every `PF_ARM_*` constant from
+//!    SDK 26100. Plus one architectural inference: `rdm` is set whenever
+//!    `PF_ARM_V81_ATOMIC` (LSE) or `PF_ARM_V82_DP` (DotProd) is — the same
+//!    rule .NET 10 ships in production, citing ARM ARM K.a §D17.2.91 (see
+//!    [`dotnet/runtime#109493`](https://github.com/dotnet/runtime/pull/109493)).
+//!    Each probe is one syscall returning a `BOOL`; the whole pass cached
+//!    after first call.
+//!
+//! 2. **Opt-in (`registry` Cargo feature).** Adds
+//!    `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>` reads
+//!    that decode the cached `ID_AA64*_EL1` snapshots Windows publishes.
+//!    Covers ~30 stdarch names IPFP can't reach: `fhm`, `fcma`, `frintts`,
+//!    `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`, `sb`,
+//!    `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`, `sm4`,
+//!    `rcpc2`/`rcpc3`, `pauth_lr`, `lse128`, etc. One `RegOpenKeyExW` +
+//!    a handful of `RegGetValueW` calls on first probe.
+//!
+//! Default features: empty. The IPFP-only mode matches what .NET 10,
+//! pytorch/cpuinfo, and Microsoft's own Windows runtime ship.
 //!
 //! ## Two macros, two cost tiers
 //!
-//! Registry reads aren't free — opening the key and pulling ten `REG_QWORD`
-//! values isn't cheap on cold paths. So this crate splits detection into
-//! two opt-in tiers:
+//! | Macro              | Backend on Windows ARM           | Compile error if feature… |
+//! |--------------------|----------------------------------|---------------------------|
+//! | [`detected!`]      | IPFP only (always cheap)         | needs the registry layer  |
+//! | [`detected_full!`] | IPFP + (with `registry`) CP keys | never                     |
 //!
-//! | Macro              | Backend on Windows ARM       | Compile error if feature... |
-//! |--------------------|------------------------------|-----------------------------|
-//! | [`detected!`]      | `IsProcessorFeaturePresent`  | needs the registry          |
-//! | [`detected_full!`] | IPFP + registry CP-key reads | never                       |
+//! Without the `registry` feature, [`detected_full!`] is identical to
+//! [`detected!`]. With it, [`detected_full!`] additionally consults the
+//! registry-decoded bits.
 //!
-//! Each macro maintains its own cache. `detected!` runs `IsProcessorFeaturePresent`
-//! probes once per process; `detected_full!` does the same plus a single
-//! batched registry pass on first call. Both caches use `Ordering::Relaxed`
-//! atomic loads — the probe is idempotent so racing initializers are fine.
+//! Each macro maintains its own cache. Probes are idempotent so racing
+//! initializers are fine; both caches use `Ordering::Relaxed` atomic loads.
 //!
 //! On every non-Windows-ARM platform, both macros expand to
 //! `std::arch::is_aarch64_feature_detected!` directly.
@@ -40,24 +55,24 @@
 //! ```no_run
 //! use winarm_cpufeatures::{detected, detected_full};
 //!
-//! // Cheap — IPFP only.
-//! if detected!("sve")   { /* SVE kernel */ }
-//! if detected!("aes")   { /* AES instructions */ }
+//! // Always-on. `rdm` works because it's IPFP-derived (DP||LSE → RDM).
+//! if detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
+//! if detected!("sve") { /* SVE kernel */ }
+//! if detected!("aes") { /* AES instructions */ }
 //!
-//! // Slow first call (one batched registry pass), free after that.
-//! if detected_full!("rdm")  { /* Rounding Doubling Multiply */ }
-//! if detected_full!("bf16") { /* AdvSIMD BF16 */ }
+//! // Same behavior unless the `registry` Cargo feature is enabled.
+//! if detected_full!("paca") { /* Pointer Auth address-key — needs `registry` */ }
 //!
-//! // Compile error: "rdm" is Registry-only.
-//! // let _ = winarm_cpufeatures::detected!("rdm");
+//! // Compile error: "paca" is registry-only.
+//! // let _ = winarm_cpufeatures::detected!("paca");
 //! ```
 //!
 //! ## Comparison to other crates
 //!
-//! - [`cpufeatures`](https://crates.io/crates/cpufeatures) (RustCrypto) is the
-//!   widely-used cross-platform feature detector but explicitly punts on
-//!   Windows-ARM and only exposes `aes`/`sha2`/`sha3` on aarch64. Use both
-//!   crates side-by-side: `cpufeatures` for x86 + Linux/macOS aarch64;
+//! - [`cpufeatures`](https://crates.io/crates/cpufeatures) (RustCrypto) is
+//!   the widely-used cross-platform feature detector but explicitly punts
+//!   on Windows-ARM and only exposes `aes`/`sha2`/`sha3` on aarch64. Use
+//!   both crates side-by-side: `cpufeatures` for x86 + Linux/macOS aarch64;
 //!   this crate for Windows-on-ARM.
 //! - [`aarch64-cpu`](https://crates.io/crates/aarch64-cpu) is a bare-metal
 //!   register-access crate for kernel/embedded code. Different domain.
@@ -65,10 +80,15 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
-// On nightly rustc, opt into the stdarch_aarch64_feature_detection gate
-// so we can delegate the 32 unstable feature names. `winarm_rustc_nightly`
-// is set by build.rs when rustc reports a nightly version.
-#![cfg_attr(winarm_rustc_nightly, feature(stdarch_aarch64_feature_detection))]
+// On nightly rustc *and* an aarch64 target, opt into the
+// stdarch_aarch64_feature_detection gate so we can delegate the 32
+// unstable feature names. `winarm_rustc_nightly` is set by build.rs when
+// rustc reports a nightly version. The `target_arch` predicate guards
+// against the gate being unrecognized on non-aarch64 nightly builds.
+#![cfg_attr(
+    all(winarm_rustc_nightly, target_arch = "aarch64"),
+    feature(stdarch_aarch64_feature_detection)
+)]
 
 mod cache;
 mod detect;

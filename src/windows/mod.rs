@@ -1,18 +1,24 @@
 //! Windows-on-ARM64 detection backend.
 //!
-//! Layered strategy:
-//! 1. `IsProcessorFeaturePresent` with every `PF_ARM_*` constant through
-//!    Windows SDK 26100 (Windows 11 24H2).
-//! 2. Registry `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`
-//!    reads, which expose cached `ID_AA64ISARx_EL1` / `ID_AA64PFRx_EL1` /
-//!    `ID_AA64MMFRx_EL1` values populated by the kernel at boot.
-//! 3. Platform baseline fallback: Windows 11 on ARM mandates ARMv8.1-A,
-//!    guaranteeing FEAT_RDM when the OS version is ≥ 10.0.22000.
+//! Two layers, the second behind a Cargo feature flag:
+//!
+//! 1. **Always-on (`ipfp`):** every `PF_ARM_*` constant defined in
+//!    Windows SDK 10.0.26100.0 (Win11 24H2) `winnt.h`, plus the
+//!    DP/LSE→RDM architectural inference (matches what .NET 10 ships
+//!    in `dotnet/runtime` v10.0.0 `cpufeatures.c:549-563`).
+//!
+//! 2. **Opt-in (`registry`):** `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`
+//!    reads decoding the cached `ID_AA64*_EL1` system-register snapshots.
+//!    Covers ~30 stdarch feature names Microsoft has never exposed via
+//!    IPFP. Adds one `RegOpenKeyExW` + a handful of `RegGetValueW` calls
+//!    on first probe.
 
 #![cfg(all(target_os = "windows", target_arch = "aarch64"))]
 
 mod ipfp;
+#[cfg(feature = "registry")]
 mod registry;
 
 pub(crate) use ipfp::fill as fill_ipfp;
+#[cfg(feature = "registry")]
 pub(crate) use registry::fill as fill_registry;

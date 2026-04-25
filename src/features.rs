@@ -72,27 +72,37 @@ features! {
     // ── SIMD / compute baseline ────────────────────────────────────────────
     Asimd      = (0,  "asimd",        Ipfp),
     Fp         = (1,  "fp",           Ipfp),
-    Fp16       = (2,  "fp16",         Registry),
+    // PF_ARM_V82_FP16 (#67) wired since SDK 26100; registry ID_AA64PFR0
+    // covers older Windows builds too.
+    Fp16       = (2,  "fp16",         Both),
     Fhm        = (3,  "fhm",          Registry),
     Fcma       = (4,  "fcma",         Registry),
-    Bf16       = (5,  "bf16",         Registry),
-    I8mm       = (6,  "i8mm",         Registry),
+    // PF_ARM_V86_BF16 (#68) wired since SDK 26100; registry ISAR1 fallback.
+    Bf16       = (5,  "bf16",         Both),
+    // PF_ARM_V82_I8MM (#66) wired since SDK 26100; registry ISAR1 fallback.
+    I8mm       = (6,  "i8mm",         Both),
     JsConv     = (7,  "jsconv",       Ipfp),
     FrintTs    = (8,  "frintts",      Registry),
-    Rdm        = (9,  "rdm",          Registry),
+    // Microsoft has never defined PF_ARM_RDM_*. Derived from PF_ARM_V82_DP
+    // or PF_ARM_V81_ATOMIC via ARM ARM K.a §D17.2.91 — same approach .NET
+    // 10 ships (dotnet/runtime#109493). Registry ISAR0 confirms.
+    Rdm        = (9,  "rdm",          Both),
     Dotprod    = (10, "dotprod",      Ipfp),
     // ── Crypto ─────────────────────────────────────────────────────────────
     // aes/pmull/sha2 are grouped under PF_ARM_V8_CRYPTO.
     Aes        = (11, "aes",          Ipfp),
     Pmull      = (12, "pmull",        Ipfp),
     Sha2       = (13, "sha2",         Ipfp),
-    // sha3/sm4 advsimd: no PF_ARM_* constant. Registry (ISAR0) only.
-    Sha3       = (14, "sha3",         Registry),
+    // PF_ARM_SHA3 (#64) AND PF_ARM_SHA512 (#65) wired since SDK 26100
+    // (stdarch's `sha3` requires both). Registry ISAR0 fallback.
+    Sha3       = (14, "sha3",         Both),
+    // PF_ARM_SVE_SM4 (#56) covers SVE-form only; AdvSIMD form needs registry.
     Sm4        = (15, "sm4",          Registry),
     Crc        = (16, "crc",          Ipfp),
     // ── Atomics / memory ───────────────────────────────────────────────────
     Lse        = (17, "lse",          Ipfp),
-    Lse2       = (18, "lse2",         Registry),
+    // PF_ARM_LSE2_AVAILABLE (#62) wired since SDK 26100; registry MMFR2 fallback.
+    Lse2       = (18, "lse2",         Both),
     Lse128     = (19, "lse128",       Registry),
     Rcpc       = (20, "rcpc",         Ipfp),
     Rcpc2      = (21, "rcpc2",        Registry),
@@ -129,7 +139,7 @@ features! {
     Fp8Dot4    = (46, "fp8dot4",      Registry),
     Fp8Fma     = (47, "fp8fma",       Registry),
     Fpmr       = (48, "fpmr",         Registry),
-    // ── SVE / SVE2 (most in IPFP since SDK 26100) ─────────────────────────
+    // ── SVE / SVE2 (IPFP since SDK 26100) ─────────────────────────────────
     Sve        = (49, "sve",          Ipfp),
     Sve2       = (50, "sve2",         Ipfp),
     Sve2p1     = (51, "sve2p1",       Ipfp),
@@ -140,23 +150,22 @@ features! {
     SveB16b16  = (56, "sve_b16b16",   Ipfp),
     F32mm      = (57, "f32mm",        Ipfp),
     F64mm      = (58, "f64mm",        Ipfp),
-    // ── SME / SME2 ────────────────────────────────────────────────────────
-    // Present in SDK 26100 winnt.h but the numeric PF values are not
-    // verified in our sources yet — mark Registry until verified.
-    Sme        = (59, "sme",          Registry),
-    Sme2       = (60, "sme2",         Registry),
-    Sme2p1     = (61, "sme2p1",       Registry),
-    SmeB16b16  = (62, "sme_b16b16",   Registry),
-    SmeF16f16  = (63, "sme_f16f16",   Registry),
-    SmeF64f64  = (64, "sme_f64f64",   Registry),
-    SmeF8f16   = (65, "sme_f8f16",    Registry),
-    SmeF8f32   = (66, "sme_f8f32",    Registry),
-    SmeFa64    = (67, "sme_fa64",     Registry),
-    SmeI16i64  = (68, "sme_i16i64",   Registry),
-    SmeLutv2   = (69, "sme_lutv2",    Registry),
-    SsveFp8Dot2= (70, "ssve_fp8dot2", Registry),
-    SsveFp8Dot4= (71, "ssve_fp8dot4", Registry),
-    SsveFp8Fma = (72, "ssve_fp8fma",  Registry),
+    // ── SME / SME2 (IPFP since SDK 26100, registry decode for `sme` only) ─
+    // PF_ARM_SME (#70) maps to `sme`; registry PFR1 confirms.
+    Sme        = (59, "sme",          Both),
+    Sme2       = (60, "sme2",         Ipfp),
+    Sme2p1     = (61, "sme2p1",       Ipfp),
+    SmeB16b16  = (62, "sme_b16b16",   Ipfp),
+    SmeF16f16  = (63, "sme_f16f16",   Ipfp),
+    SmeF64f64  = (64, "sme_f64f64",   Ipfp),
+    SmeF8f16   = (65, "sme_f8f16",    Ipfp),
+    SmeF8f32   = (66, "sme_f8f32",    Ipfp),
+    SmeFa64    = (67, "sme_fa64",     Ipfp),
+    SmeI16i64  = (68, "sme_i16i64",   Ipfp),
+    SmeLutv2   = (69, "sme_lutv2",    Ipfp),
+    SsveFp8Dot2= (70, "ssve_fp8dot2", Ipfp),
+    SsveFp8Dot4= (71, "ssve_fp8dot4", Ipfp),
+    SsveFp8Fma = (72, "ssve_fp8fma",  Ipfp),
 }
 
 /// Total count of enumerated features.
