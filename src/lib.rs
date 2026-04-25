@@ -21,16 +21,24 @@
 //!    Each probe is one syscall returning a `BOOL`; the whole pass cached
 //!    after first call.
 //!
-//! 2. **Opt-in (`registry` Cargo feature).** Adds
-//!    `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>` reads
-//!    that decode the cached `ID_AA64*_EL1` snapshots Windows publishes.
-//!    Covers ~30 stdarch names IPFP can't reach: `fhm`, `fcma`, `frintts`,
-//!    `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`, `sb`,
-//!    `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`, `sm4`,
-//!    `rcpc2`/`rcpc3`, `pauth_lr`, `lse128`, etc. One `RegOpenKeyExW` +
-//!    a handful of `RegGetValueW` calls on first probe.
+//! 2. **Double opt-in (`registry` Cargo feature + runtime authorisation).**
+//!    Adds `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`
+//!    reads that decode the cached `ID_AA64*_EL1` snapshots Windows
+//!    publishes. Covers ~30 stdarch names IPFP can't reach: `fhm`, `fcma`,
+//!    `frintts`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`,
+//!    `sb`, `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`,
+//!    `sm4`, `rcpc2`/`rcpc3`, `pauth_lr`, `lse128`, etc. One
+//!    `RegOpenKeyExW` + a handful of `RegGetValueW` calls on first probe.
 //!
-//! Default features: empty. The IPFP-only mode matches what .NET 10,
+//!    Cargo features union across the dependency graph — if any
+//!    transitive crate enables `registry`, the FFI gets linked into your
+//!    binary. The runtime gate ([`set_registry_enabled`]) is the second
+//!    tier: the registry is consulted only when the application
+//!    explicitly authorises it. Without that call, the registry layer
+//!    is compiled-but-dormant.
+//!
+//! Default features: empty. Default runtime: registry off. The
+//! IPFP-only-with-RDM-derivation mode matches what .NET 10,
 //! pytorch/cpuinfo, and Microsoft's own Windows runtime ship.
 //!
 //! ## Two macros, two cost tiers
@@ -53,15 +61,19 @@
 //! ## Quick reference
 //!
 //! ```no_run
-//! use winarm_cpufeatures::{detected, detected_full};
+//! use winarm_cpufeatures::{detected, detected_full, set_registry_enabled};
 //!
 //! // Always-on. `rdm` works because it's IPFP-derived (DP||LSE → RDM).
 //! if detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
 //! if detected!("sve") { /* SVE kernel */ }
 //! if detected!("aes") { /* AES instructions */ }
 //!
-//! // Same behavior unless the `registry` Cargo feature is enabled.
-//! if detected_full!("paca") { /* Pointer Auth address-key — needs `registry` */ }
+//! // Authorise registry layer at runtime (compile-time `registry` feature
+//! // must also be enabled, or this is a no-op). Best done once at startup,
+//! // before any `detected_full!` query.
+//! set_registry_enabled(true);
+//!
+//! if detected_full!("paca") { /* Pointer Auth address-key */ }
 //!
 //! // Compile error: "paca" is registry-only.
 //! // let _ = winarm_cpufeatures::detected!("paca");
@@ -97,7 +109,9 @@ mod features;
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 mod windows;
 
-pub use cache::{Features, is_detected, is_detected_full};
+pub use cache::{
+    Features, is_detected, is_detected_full, is_registry_enabled, set_registry_enabled,
+};
 pub use features::{DetectionMethod, FEATURE_COUNT, Feature};
 
 /// Cheap detection — uses `IsProcessorFeaturePresent` only on Windows ARM64.

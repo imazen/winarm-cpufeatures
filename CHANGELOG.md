@@ -19,6 +19,15 @@
   `HKLM\…\CentralProcessor\0\CP <hex>` ID-register decoder for the ~30
   stdarch feature names IPFP cannot reach. Same shape as before, just
   opt-in.
+- **Double opt-in for the registry layer**: even when the Cargo feature
+  is enabled (whether by your own crate or any transitive dep — Cargo
+  features union across the dependency graph), the registry is *not
+  consulted* until `set_registry_enabled(true)` is called. The registry
+  FFI is linked but stays dormant. Defense in depth against transitive
+  feature enablement.
+- New public functions: `set_registry_enabled(bool)` and
+  `is_registry_enabled() -> bool`. Both are no-ops on builds without the
+  `registry` feature, kept for API stability.
 - Documentation: `contrib/std_detect_patch/` contains a draft
   `library/std_detect/src/detect/os/windows/aarch64.rs` replacement plus
   a `dotnet10_arm_detection_reference.md` source-pinned to .NET 10 GA

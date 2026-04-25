@@ -15,7 +15,7 @@
 //! [`detected!`]: crate::detected!
 //! [`detected_full!`]: crate::detected_full!
 
-use core::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 #[cfg(test)]
 use crate::features::FEATURE_COUNT;
@@ -29,10 +29,24 @@ static FAST_INIT: AtomicU8 = AtomicU8::new(INIT_UNSET);
 static FAST_LO: AtomicU64 = AtomicU64::new(0);
 static FAST_HI: AtomicU64 = AtomicU64::new(0);
 
-/// Full cache — IPFP + registry, queried by [`crate::detected_full!`].
+/// Full cache — IPFP plus, when both the `registry` Cargo feature is enabled
+/// AND [`set_registry_enabled(true)`] has been called, registry CP-key reads.
+/// Queried by [`crate::detected_full!`].
 static FULL_INIT: AtomicU8 = AtomicU8::new(INIT_UNSET);
 static FULL_LO: AtomicU64 = AtomicU64::new(0);
 static FULL_HI: AtomicU64 = AtomicU64::new(0);
+
+/// Runtime opt-in for the registry layer. Defaults to `false` so the
+/// registry path is *never touched* unless the application explicitly
+/// asks for it — even when transitive dependencies have enabled the
+/// `registry` Cargo feature.
+///
+/// Cargo features union across the dependency graph; if any crate in
+/// your binary turns on `winarm-cpufeatures/registry`, the registry FFI
+/// gets linked into your binary regardless of your own `Cargo.toml`.
+/// This flag is the second tier of opt-in: registry code is *compiled*
+/// in, but won't *run* until the application explicitly authorises it.
+static REGISTRY_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// A snapshot of a detection cache. Cheap to copy; `has` is a pure bit test.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -160,6 +174,45 @@ fn ensure_full() {
     FULL_LO.store(f.lo, Ordering::Relaxed);
     FULL_HI.store(f.hi, Ordering::Relaxed);
     FULL_INIT.store(INIT_DONE, Ordering::Release);
+}
+
+/// Authorise the registry-based detection layer at runtime.
+///
+/// **Compile-time + runtime double opt-in.** The registry FFI is only
+/// linked into your binary when *some* crate enables the
+/// `winarm-cpufeatures/registry` Cargo feature; this function is the
+/// second tier — it must be called before any [`detected_full!`] /
+/// [`Features::current_full`] call for the registry to actually be
+/// consulted. Without it, the registry code stays untouched even when
+/// it's compiled in.
+///
+/// Call once at process startup, before any feature query happens.
+/// Calling later still flips the flag, but doesn't invalidate
+/// already-populated full-cache state — pre-call queries will have
+/// returned IPFP-only answers, post-call queries will see the
+/// registry-augmented set on next probe (one of them will pay the
+/// init cost).
+///
+/// On builds without the `registry` feature, this function is a no-op
+/// kept available for API stability.
+///
+/// [`detected_full!`]: crate::detected_full!
+#[inline]
+pub fn set_registry_enabled(enabled: bool) {
+    REGISTRY_RUNTIME_ENABLED.store(enabled, Ordering::Release);
+    // Invalidate the full cache so the next probe re-runs with the new
+    // policy. Concurrent readers either see the old cache (still valid,
+    // just IPFP-only) or trigger a fresh probe.
+    FULL_INIT.store(INIT_UNSET, Ordering::Release);
+}
+
+/// Returns whether the registry-based detection layer is currently
+/// authorised at runtime.
+///
+/// Returns `false` on builds without the `registry` Cargo feature.
+#[inline]
+pub fn is_registry_enabled() -> bool {
+    REGISTRY_RUNTIME_ENABLED.load(Ordering::Acquire)
 }
 
 #[cfg(test)]

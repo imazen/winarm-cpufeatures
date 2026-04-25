@@ -52,8 +52,13 @@ pub(crate) fn probe_full() -> Features {
     {
         let mut f = Features::EMPTY;
         crate::windows::fill_ipfp(&mut f);
+        // Registry layer is double-opt-in: the `registry` Cargo feature
+        // links the FFI, and `set_registry_enabled(true)` authorises it
+        // at runtime. Both must be in effect.
         #[cfg(feature = "registry")]
-        crate::windows::fill_registry(&mut f);
+        if crate::cache::is_registry_enabled() {
+            crate::windows::fill_registry(&mut f);
+        }
         return f;
     }
 
