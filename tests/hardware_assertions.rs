@@ -174,6 +174,47 @@ fn snapdragon_x() {
     }
 }
 
+/// Qualcomm SC8280XP (8cx Gen 3 / Nuvia Phoenix, ARMv8.4-A) as found in
+/// Lenovo ThinkPad X13s and dev kits running Linux (WSL2 or native).
+///
+/// Implements a rich AdvSIMD + crypto feature set but no SVE/SME. Notable:
+/// has flagm2, frint, sha512 (per /proc/cpuinfo) but Rust stdarch only exposes
+/// flagm2/frintts/sb/ssbs on nightly — so those are nightly-only assertions.
+///
+/// Feature expectations derived from /proc/cpuinfo on WSL2:
+///   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid
+///   asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 asimdfhm
+///   uscat ilrcpc flagm ssbs sb paca pacg dcpodp flagm2 frint i8mm bf16
+///   rng afp rpres
+#[test]
+#[ignore = "requires Qualcomm SC8280XP — `cargo test --ignored sc8280xp`"]
+fn sc8280xp() {
+    // ── Must be present (stable stdarch names) ──────────────────────────
+    for f in [
+        "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4",
+        "lse", "lse2", "rcpc", "rcpc2", "rdm", "dotprod", "jsconv",
+        "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
+        "paca", "pacg", "dpb", "dpb2", "flagm", "rand",
+        "sb", "ssbs",
+    ] {
+        assert!(
+            dispatch(f),
+            "SC8280XP must have feature `{f}` but detected_full said no"
+        );
+    }
+
+    // ── Must be absent ──────────────────────────────────────────────────
+    for f in [
+        "sve", "sve2", "sme", "sme2", "mte", "bti",
+        "lse128", "rcpc3", "mops", "wfxt",
+    ] {
+        assert!(
+            !dispatch(f),
+            "SC8280XP must NOT have feature `{f}` but detected_full said yes"
+        );
+    }
+}
+
 /// detected_full! takes a literal, but these tests iterate over `&str`. Route
 /// each name through a match so the macro sees a literal at each site.
 fn dispatch(name: &str) -> bool {
@@ -208,6 +249,8 @@ fn dispatch(name: &str) -> bool {
         "dpb2" => detected_full!("dpb2"),
         "mte" => detected_full!("mte"),
         "mops" => detected_full!("mops"),
+        "sb" => detected_full!("sb"),
+        "ssbs" => detected_full!("ssbs"),
         "flagm" => detected_full!("flagm"),
         "flagm2" => detected_full!("flagm2"),
         "rand" => detected_full!("rand"),

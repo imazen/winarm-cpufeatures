@@ -87,12 +87,30 @@ fn non_aarch64_targets_detect_nothing() {
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[test]
 fn non_windows_aarch64_matches_stdarch() {
-    assert_eq!(
-        detected!("asimd"),
-        std::arch::is_aarch64_feature_detected!("asimd")
-    );
-    assert_eq!(
-        detected_full!("aes"),
-        std::arch::is_aarch64_feature_detected!("aes")
+    // Every stable stdarch name must agree with our detection.
+    macro_rules! check {
+        ($($name:tt),* $(,)?) => {
+            $(
+                assert_eq!(
+                    detected_full!($name),
+                    std::arch::is_aarch64_feature_detected!($name),
+                    concat!("mismatch for feature `", $name, "`")
+                );
+            )*
+        };
+    }
+    // All 41 stable stdarch feature names that share the same spelling
+    // between detected_full! and is_aarch64_feature_detected!.
+    // SVE2 sub-features are excluded: stdarch uses dashes (e.g. "sve2-aes")
+    // while this crate uses underscores (e.g. "sve2_aes").
+    check!(
+        "asimd", "fp", "fp16", "fhm", "fcma", "bf16", "i8mm",
+        "jsconv", "frintts", "rdm", "dotprod",
+        "aes", "pmull", "sha2", "sha3", "sm4",
+        "crc", "lse", "lse2", "rcpc", "rcpc2",
+        "paca", "pacg", "bti", "dpb", "dpb2", "mte",
+        "dit", "sb", "ssbs", "flagm", "rand", "tme",
+        "sve", "sve2",
+        "f32mm", "f64mm",
     );
 }
