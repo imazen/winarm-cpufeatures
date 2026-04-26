@@ -16,7 +16,21 @@
 
 #![cfg(target_arch = "aarch64")]
 
-use winarm_cpufeatures::detected_full;
+use winarm_cpufeatures::{detected_full, set_registry_enabled};
+
+/// Authorise the registry detection layer once per test process.
+///
+/// Without this, the `registry` Cargo feature is compiled in but the
+/// runtime gate stays off — and `detected_full!` returns IPFP-only
+/// answers, causing every registry-only feature (sm4, paca, dpb*, flagm*,
+/// dit, sb, ssbs, rand, …) to read `false`. Each ignored hardware test
+/// calls this at entry. Idempotent; uses `Once` to avoid repeated cache
+/// invalidation under parallel execution.
+fn setup() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| set_registry_enabled(true));
+}
 
 /// Neoverse N2 (Armv9.0-A) as shipped in Azure Cobalt 100, Graviton 3, and
 /// GitHub's `windows-11-arm` / `ubuntu-24.04-arm` hosted runners.
@@ -26,6 +40,7 @@ use winarm_cpufeatures::detected_full;
 #[test]
 #[ignore = "requires Neoverse N2 / Cobalt 100 — `cargo test --ignored neoverse_n2`"]
 fn neoverse_n2() {
+    setup();
     // ── Must be present ─────────────────────────────────────────────────
     for f in [
         "asimd",
@@ -95,6 +110,7 @@ fn neoverse_n2() {
 #[test]
 #[ignore = "requires Neoverse V2 — `cargo test --ignored neoverse_v2`"]
 fn neoverse_v2() {
+    setup();
     // Superset of N2's positives, plus:
     for f in [
         "asimd",
@@ -154,10 +170,15 @@ fn neoverse_v2() {
 #[test]
 #[ignore = "requires Snapdragon X (Oryon) — `cargo test --ignored snapdragon_x`"]
 fn snapdragon_x() {
+    setup();
+    // FEAT_MOPS and FEAT_WFxT are optional in ARMv8.7 (only mandated at v8.8);
+    // Oryon does not implement them — verified on a Yoga Slim 7x (X1E, MIDR
+    // impl=0x51 var=0x2 part=0x001) where ID_AA64ISAR2_EL1 reports MOPS=0,
+    // WFxT=0 and `/proc/cpuinfo` lists neither.
     for f in [
         "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4", "lse", "lse2", "rcpc",
         "rcpc2", "rdm", "dotprod", "jsconv", "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
-        "paca", "pacg", "dpb", "dpb2", "flagm", "flagm2", "mops", "wfxt", "rand",
+        "paca", "pacg", "dpb", "dpb2", "flagm", "flagm2", "rand", "sb", "ssbs",
     ] {
         assert!(
             dispatch(f),
@@ -189,6 +210,7 @@ fn snapdragon_x() {
 #[test]
 #[ignore = "requires Qualcomm SC8280XP — `cargo test --ignored sc8280xp`"]
 fn sc8280xp() {
+    setup();
     // ── Must be present (stable stdarch names) ──────────────────────────
     for f in [
         "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4",
