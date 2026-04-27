@@ -114,14 +114,47 @@ pub use cache::{
 };
 pub use features::{DetectionMethod, FEATURE_COUNT, Feature};
 
+// ─── Macro dispatch — one arm per feature name ───────────────────────────
+//
+// Both macros use direct `macro_rules!` arm dispatch instead of a const
+// lookup table. Each `detected!`/`detected_full!` call site expands to
+// exactly one expression — no const-eval, no `panic!`-based assertions,
+// no string-compare loop. This keeps downstream compile time flat in the
+// number of call sites.
+//
+// Source of truth for the (name, variant, detection-method) triples is
+// `features.rs::features!`. If you add a feature there, add an arm here
+// in BOTH macros (and in `__detected_registry_only!` if it's
+// Registry-classified). The smoke tests cover every name through both
+// macros, so missing arms surface immediately.
+
+/// Helper: emits a `compile_error!` for a feature whose
+/// [`DetectionMethod`] is [`DetectionMethod::Registry`] when called via
+/// the fast [`detected!`] macro. Public-but-doc-hidden so the
+/// `#[macro_export] detected!` arms can reach it.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __detected_registry_only {
+    ($name:literal) => {
+        ::core::compile_error!(::core::concat!(
+            "feature '",
+            $name,
+            "' requires registry detection — use winarm_cpufeatures::detected_full!() instead",
+        ))
+    };
+}
+
 /// Cheap detection — uses `IsProcessorFeaturePresent` only on Windows ARM64.
 ///
-/// This macro **fails to compile** if `$name` requires registry detection
-/// (i.e. its [`DetectionMethod`] is [`DetectionMethod::Registry`]). Use
+/// **Compile error** if `$name` requires registry detection (its
+/// [`DetectionMethod`] is [`DetectionMethod::Registry`]). Use
 /// [`detected_full!`] for those.
 ///
-/// On non-Windows-ARM targets, expands to
-/// `std::arch::is_aarch64_feature_detected!`.
+/// **Compile error** if `$name` is not a known aarch64 feature name.
+///
+/// On non-Windows-ARM targets, this consults the per-process cache that
+/// was populated by `std::arch::is_aarch64_feature_detected!` on first
+/// access.
 ///
 /// ```no_run
 /// if winarm_cpufeatures::detected!("sve") {
@@ -130,40 +163,250 @@ pub use features::{DetectionMethod, FEATURE_COUNT, Feature};
 /// ```
 #[macro_export]
 macro_rules! detected {
-    ($name:literal) => {{
-        const _F: ::core::option::Option<$crate::Feature> =
-            $crate::Feature::from_name_const($name);
-        const _CHECK_VALID: () = assert!(
-            _F.is_some(),
-            concat!("unknown aarch64 feature name: '", $name, "'"),
-        );
-        const _CHECK_FAST: () = {
-            if let Some(f) = _F {
-                match f.detection_method() {
-                    $crate::DetectionMethod::Ipfp | $crate::DetectionMethod::Both => {}
-                    $crate::DetectionMethod::Registry => ::core::panic!(concat!(
-                        "feature '",
-                        $name,
-                        "' requires registry detection — use winarm_cpufeatures::detected_full!() instead",
-                    )),
-                }
-            }
-        };
-        match _F {
-            ::core::option::Option::Some(f) => $crate::is_detected(f),
-            ::core::option::Option::None => false,
-        }
-    }};
+    // ── Ipfp / Both — direct dispatch to `is_detected` ────────────────────
+    ("asimd") => {
+        $crate::is_detected($crate::Feature::Asimd)
+    };
+    ("fp") => {
+        $crate::is_detected($crate::Feature::Fp)
+    };
+    ("fp16") => {
+        $crate::is_detected($crate::Feature::Fp16)
+    };
+    ("bf16") => {
+        $crate::is_detected($crate::Feature::Bf16)
+    };
+    ("i8mm") => {
+        $crate::is_detected($crate::Feature::I8mm)
+    };
+    ("jsconv") => {
+        $crate::is_detected($crate::Feature::JsConv)
+    };
+    ("rdm") => {
+        $crate::is_detected($crate::Feature::Rdm)
+    };
+    ("dotprod") => {
+        $crate::is_detected($crate::Feature::Dotprod)
+    };
+    ("aes") => {
+        $crate::is_detected($crate::Feature::Aes)
+    };
+    ("pmull") => {
+        $crate::is_detected($crate::Feature::Pmull)
+    };
+    ("sha2") => {
+        $crate::is_detected($crate::Feature::Sha2)
+    };
+    ("sha3") => {
+        $crate::is_detected($crate::Feature::Sha3)
+    };
+    ("crc") => {
+        $crate::is_detected($crate::Feature::Crc)
+    };
+    ("lse") => {
+        $crate::is_detected($crate::Feature::Lse)
+    };
+    ("lse2") => {
+        $crate::is_detected($crate::Feature::Lse2)
+    };
+    ("rcpc") => {
+        $crate::is_detected($crate::Feature::Rcpc)
+    };
+    ("sve") => {
+        $crate::is_detected($crate::Feature::Sve)
+    };
+    ("sve2") => {
+        $crate::is_detected($crate::Feature::Sve2)
+    };
+    ("sve2p1") => {
+        $crate::is_detected($crate::Feature::Sve2p1)
+    };
+    ("sve2_aes") => {
+        $crate::is_detected($crate::Feature::Sve2Aes)
+    };
+    ("sve2_bitperm") => {
+        $crate::is_detected($crate::Feature::Sve2Bitperm)
+    };
+    ("sve2_sha3") => {
+        $crate::is_detected($crate::Feature::Sve2Sha3)
+    };
+    ("sve2_sm4") => {
+        $crate::is_detected($crate::Feature::Sve2Sm4)
+    };
+    ("sve_b16b16") => {
+        $crate::is_detected($crate::Feature::SveB16b16)
+    };
+    ("f32mm") => {
+        $crate::is_detected($crate::Feature::F32mm)
+    };
+    ("f64mm") => {
+        $crate::is_detected($crate::Feature::F64mm)
+    };
+    ("sme") => {
+        $crate::is_detected($crate::Feature::Sme)
+    };
+    ("sme2") => {
+        $crate::is_detected($crate::Feature::Sme2)
+    };
+    ("sme2p1") => {
+        $crate::is_detected($crate::Feature::Sme2p1)
+    };
+    ("sme_b16b16") => {
+        $crate::is_detected($crate::Feature::SmeB16b16)
+    };
+    ("sme_f16f16") => {
+        $crate::is_detected($crate::Feature::SmeF16f16)
+    };
+    ("sme_f64f64") => {
+        $crate::is_detected($crate::Feature::SmeF64f64)
+    };
+    ("sme_f8f16") => {
+        $crate::is_detected($crate::Feature::SmeF8f16)
+    };
+    ("sme_f8f32") => {
+        $crate::is_detected($crate::Feature::SmeF8f32)
+    };
+    ("sme_fa64") => {
+        $crate::is_detected($crate::Feature::SmeFa64)
+    };
+    ("sme_i16i64") => {
+        $crate::is_detected($crate::Feature::SmeI16i64)
+    };
+    ("sme_lutv2") => {
+        $crate::is_detected($crate::Feature::SmeLutv2)
+    };
+    ("ssve_fp8dot2") => {
+        $crate::is_detected($crate::Feature::SsveFp8Dot2)
+    };
+    ("ssve_fp8dot4") => {
+        $crate::is_detected($crate::Feature::SsveFp8Dot4)
+    };
+    ("ssve_fp8fma") => {
+        $crate::is_detected($crate::Feature::SsveFp8Fma)
+    };
+    // ── Registry-only — compile error pointing at detected_full! ─────────
+    ("fhm") => {
+        $crate::__detected_registry_only!("fhm")
+    };
+    ("fcma") => {
+        $crate::__detected_registry_only!("fcma")
+    };
+    ("frintts") => {
+        $crate::__detected_registry_only!("frintts")
+    };
+    ("sm4") => {
+        $crate::__detected_registry_only!("sm4")
+    };
+    ("lse128") => {
+        $crate::__detected_registry_only!("lse128")
+    };
+    ("rcpc2") => {
+        $crate::__detected_registry_only!("rcpc2")
+    };
+    ("rcpc3") => {
+        $crate::__detected_registry_only!("rcpc3")
+    };
+    ("paca") => {
+        $crate::__detected_registry_only!("paca")
+    };
+    ("pacg") => {
+        $crate::__detected_registry_only!("pacg")
+    };
+    ("pauth_lr") => {
+        $crate::__detected_registry_only!("pauth_lr")
+    };
+    ("bti") => {
+        $crate::__detected_registry_only!("bti")
+    };
+    ("dpb") => {
+        $crate::__detected_registry_only!("dpb")
+    };
+    ("dpb2") => {
+        $crate::__detected_registry_only!("dpb2")
+    };
+    ("mte") => {
+        $crate::__detected_registry_only!("mte")
+    };
+    ("mops") => {
+        $crate::__detected_registry_only!("mops")
+    };
+    ("dit") => {
+        $crate::__detected_registry_only!("dit")
+    };
+    ("sb") => {
+        $crate::__detected_registry_only!("sb")
+    };
+    ("ssbs") => {
+        $crate::__detected_registry_only!("ssbs")
+    };
+    ("flagm") => {
+        $crate::__detected_registry_only!("flagm")
+    };
+    ("flagm2") => {
+        $crate::__detected_registry_only!("flagm2")
+    };
+    ("rand") => {
+        $crate::__detected_registry_only!("rand")
+    };
+    ("tme") => {
+        $crate::__detected_registry_only!("tme")
+    };
+    ("ecv") => {
+        $crate::__detected_registry_only!("ecv")
+    };
+    ("cssc") => {
+        $crate::__detected_registry_only!("cssc")
+    };
+    ("wfxt") => {
+        $crate::__detected_registry_only!("wfxt")
+    };
+    ("hbc") => {
+        $crate::__detected_registry_only!("hbc")
+    };
+    ("lut") => {
+        $crate::__detected_registry_only!("lut")
+    };
+    ("faminmax") => {
+        $crate::__detected_registry_only!("faminmax")
+    };
+    ("fp8") => {
+        $crate::__detected_registry_only!("fp8")
+    };
+    ("fp8dot2") => {
+        $crate::__detected_registry_only!("fp8dot2")
+    };
+    ("fp8dot4") => {
+        $crate::__detected_registry_only!("fp8dot4")
+    };
+    ("fp8fma") => {
+        $crate::__detected_registry_only!("fp8fma")
+    };
+    ("fpmr") => {
+        $crate::__detected_registry_only!("fpmr")
+    };
+    // ── Catch-all — unknown feature name ─────────────────────────────────
+    ($other:literal) => {
+        ::core::compile_error!(::core::concat!(
+            "unknown aarch64 feature name: '",
+            $other,
+            "'",
+        ))
+    };
 }
 
-/// Full detection — uses `IsProcessorFeaturePresent` plus registry-cached
-/// `ID_AA64*_EL1` reads on Windows ARM64. Accepts every feature name.
+/// Full detection — uses `IsProcessorFeaturePresent` plus, when the
+/// `registry` Cargo feature is enabled and [`set_registry_enabled`] has
+/// been called with `true`, `HKLM\…\CentralProcessor\0\CP <hex>` registry
+/// reads on Windows ARM64. Accepts every aarch64 feature name.
 ///
 /// First call from a process triggers one registry key open + ~10 value
 /// reads. Subsequent calls hit the cached bitset.
 ///
-/// On non-Windows-ARM targets, expands to
-/// `std::arch::is_aarch64_feature_detected!`.
+/// **Compile error** if `$name` is not a known aarch64 feature name.
+///
+/// On non-Windows-ARM targets, this consults the per-process cache that
+/// was populated by `std::arch::is_aarch64_feature_detected!` on first
+/// access.
 ///
 /// ```no_run
 /// if winarm_cpufeatures::detected_full!("rdm") {
@@ -172,121 +415,231 @@ macro_rules! detected {
 /// ```
 #[macro_export]
 macro_rules! detected_full {
-    ($name:literal) => {{
-        const _F: ::core::option::Option<$crate::Feature> = $crate::Feature::from_name_const($name);
-        const _CHECK_VALID: () = assert!(
-            _F.is_some(),
-            concat!("unknown aarch64 feature name: '", $name, "'"),
-        );
-        match _F {
-            ::core::option::Option::Some(f) => $crate::is_detected_full(f),
-            ::core::option::Option::None => false,
-        }
-    }};
-}
-
-impl Feature {
-    /// Const version of [`Feature::from_name`], used by the [`detected!`]
-    /// and [`detected_full!`] macros to validate names at compile time.
-    #[doc(hidden)]
-    pub const fn from_name_const(name: &str) -> Option<Self> {
-        const fn eq(a: &str, b: &str) -> bool {
-            let a = a.as_bytes();
-            let b = b.as_bytes();
-            if a.len() != b.len() {
-                return false;
-            }
-            let mut i = 0;
-            while i < a.len() {
-                if a[i] != b[i] {
-                    return false;
-                }
-                i += 1;
-            }
-            true
-        }
-        let names = &[
-            ("asimd", Feature::Asimd),
-            ("fp", Feature::Fp),
-            ("fp16", Feature::Fp16),
-            ("fhm", Feature::Fhm),
-            ("fcma", Feature::Fcma),
-            ("bf16", Feature::Bf16),
-            ("i8mm", Feature::I8mm),
-            ("jsconv", Feature::JsConv),
-            ("frintts", Feature::FrintTs),
-            ("rdm", Feature::Rdm),
-            ("dotprod", Feature::Dotprod),
-            ("aes", Feature::Aes),
-            ("pmull", Feature::Pmull),
-            ("sha2", Feature::Sha2),
-            ("sha3", Feature::Sha3),
-            ("sm4", Feature::Sm4),
-            ("crc", Feature::Crc),
-            ("lse", Feature::Lse),
-            ("lse2", Feature::Lse2),
-            ("lse128", Feature::Lse128),
-            ("rcpc", Feature::Rcpc),
-            ("rcpc2", Feature::Rcpc2),
-            ("rcpc3", Feature::Rcpc3),
-            ("paca", Feature::Paca),
-            ("pacg", Feature::Pacg),
-            ("pauth_lr", Feature::PauthLr),
-            ("bti", Feature::Bti),
-            ("dpb", Feature::Dpb),
-            ("dpb2", Feature::Dpb2),
-            ("mte", Feature::Mte),
-            ("mops", Feature::Mops),
-            ("dit", Feature::Dit),
-            ("sb", Feature::Sb),
-            ("ssbs", Feature::Ssbs),
-            ("flagm", Feature::FlagM),
-            ("flagm2", Feature::FlagM2),
-            ("rand", Feature::Rand),
-            ("tme", Feature::Tme),
-            ("ecv", Feature::Ecv),
-            ("cssc", Feature::Cssc),
-            ("wfxt", Feature::WfxT),
-            ("hbc", Feature::Hbc),
-            ("lut", Feature::Lut),
-            ("faminmax", Feature::FaMinMax),
-            ("fp8", Feature::Fp8),
-            ("fp8dot2", Feature::Fp8Dot2),
-            ("fp8dot4", Feature::Fp8Dot4),
-            ("fp8fma", Feature::Fp8Fma),
-            ("fpmr", Feature::Fpmr),
-            ("sve", Feature::Sve),
-            ("sve2", Feature::Sve2),
-            ("sve2p1", Feature::Sve2p1),
-            ("sve2_aes", Feature::Sve2Aes),
-            ("sve2_bitperm", Feature::Sve2Bitperm),
-            ("sve2_sha3", Feature::Sve2Sha3),
-            ("sve2_sm4", Feature::Sve2Sm4),
-            ("sve_b16b16", Feature::SveB16b16),
-            ("f32mm", Feature::F32mm),
-            ("f64mm", Feature::F64mm),
-            ("sme", Feature::Sme),
-            ("sme2", Feature::Sme2),
-            ("sme2p1", Feature::Sme2p1),
-            ("sme_b16b16", Feature::SmeB16b16),
-            ("sme_f16f16", Feature::SmeF16f16),
-            ("sme_f64f64", Feature::SmeF64f64),
-            ("sme_f8f16", Feature::SmeF8f16),
-            ("sme_f8f32", Feature::SmeF8f32),
-            ("sme_fa64", Feature::SmeFa64),
-            ("sme_i16i64", Feature::SmeI16i64),
-            ("sme_lutv2", Feature::SmeLutv2),
-            ("ssve_fp8dot2", Feature::SsveFp8Dot2),
-            ("ssve_fp8dot4", Feature::SsveFp8Dot4),
-            ("ssve_fp8fma", Feature::SsveFp8Fma),
-        ];
-        let mut i = 0;
-        while i < names.len() {
-            if eq(names[i].0, name) {
-                return Some(names[i].1);
-            }
-            i += 1;
-        }
-        None
-    }
+    ("asimd") => {
+        $crate::is_detected_full($crate::Feature::Asimd)
+    };
+    ("fp") => {
+        $crate::is_detected_full($crate::Feature::Fp)
+    };
+    ("fp16") => {
+        $crate::is_detected_full($crate::Feature::Fp16)
+    };
+    ("fhm") => {
+        $crate::is_detected_full($crate::Feature::Fhm)
+    };
+    ("fcma") => {
+        $crate::is_detected_full($crate::Feature::Fcma)
+    };
+    ("bf16") => {
+        $crate::is_detected_full($crate::Feature::Bf16)
+    };
+    ("i8mm") => {
+        $crate::is_detected_full($crate::Feature::I8mm)
+    };
+    ("jsconv") => {
+        $crate::is_detected_full($crate::Feature::JsConv)
+    };
+    ("frintts") => {
+        $crate::is_detected_full($crate::Feature::FrintTs)
+    };
+    ("rdm") => {
+        $crate::is_detected_full($crate::Feature::Rdm)
+    };
+    ("dotprod") => {
+        $crate::is_detected_full($crate::Feature::Dotprod)
+    };
+    ("aes") => {
+        $crate::is_detected_full($crate::Feature::Aes)
+    };
+    ("pmull") => {
+        $crate::is_detected_full($crate::Feature::Pmull)
+    };
+    ("sha2") => {
+        $crate::is_detected_full($crate::Feature::Sha2)
+    };
+    ("sha3") => {
+        $crate::is_detected_full($crate::Feature::Sha3)
+    };
+    ("sm4") => {
+        $crate::is_detected_full($crate::Feature::Sm4)
+    };
+    ("crc") => {
+        $crate::is_detected_full($crate::Feature::Crc)
+    };
+    ("lse") => {
+        $crate::is_detected_full($crate::Feature::Lse)
+    };
+    ("lse2") => {
+        $crate::is_detected_full($crate::Feature::Lse2)
+    };
+    ("lse128") => {
+        $crate::is_detected_full($crate::Feature::Lse128)
+    };
+    ("rcpc") => {
+        $crate::is_detected_full($crate::Feature::Rcpc)
+    };
+    ("rcpc2") => {
+        $crate::is_detected_full($crate::Feature::Rcpc2)
+    };
+    ("rcpc3") => {
+        $crate::is_detected_full($crate::Feature::Rcpc3)
+    };
+    ("paca") => {
+        $crate::is_detected_full($crate::Feature::Paca)
+    };
+    ("pacg") => {
+        $crate::is_detected_full($crate::Feature::Pacg)
+    };
+    ("pauth_lr") => {
+        $crate::is_detected_full($crate::Feature::PauthLr)
+    };
+    ("bti") => {
+        $crate::is_detected_full($crate::Feature::Bti)
+    };
+    ("dpb") => {
+        $crate::is_detected_full($crate::Feature::Dpb)
+    };
+    ("dpb2") => {
+        $crate::is_detected_full($crate::Feature::Dpb2)
+    };
+    ("mte") => {
+        $crate::is_detected_full($crate::Feature::Mte)
+    };
+    ("mops") => {
+        $crate::is_detected_full($crate::Feature::Mops)
+    };
+    ("dit") => {
+        $crate::is_detected_full($crate::Feature::Dit)
+    };
+    ("sb") => {
+        $crate::is_detected_full($crate::Feature::Sb)
+    };
+    ("ssbs") => {
+        $crate::is_detected_full($crate::Feature::Ssbs)
+    };
+    ("flagm") => {
+        $crate::is_detected_full($crate::Feature::FlagM)
+    };
+    ("flagm2") => {
+        $crate::is_detected_full($crate::Feature::FlagM2)
+    };
+    ("rand") => {
+        $crate::is_detected_full($crate::Feature::Rand)
+    };
+    ("tme") => {
+        $crate::is_detected_full($crate::Feature::Tme)
+    };
+    ("ecv") => {
+        $crate::is_detected_full($crate::Feature::Ecv)
+    };
+    ("cssc") => {
+        $crate::is_detected_full($crate::Feature::Cssc)
+    };
+    ("wfxt") => {
+        $crate::is_detected_full($crate::Feature::WfxT)
+    };
+    ("hbc") => {
+        $crate::is_detected_full($crate::Feature::Hbc)
+    };
+    ("lut") => {
+        $crate::is_detected_full($crate::Feature::Lut)
+    };
+    ("faminmax") => {
+        $crate::is_detected_full($crate::Feature::FaMinMax)
+    };
+    ("fp8") => {
+        $crate::is_detected_full($crate::Feature::Fp8)
+    };
+    ("fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot2)
+    };
+    ("fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot4)
+    };
+    ("fp8fma") => {
+        $crate::is_detected_full($crate::Feature::Fp8Fma)
+    };
+    ("fpmr") => {
+        $crate::is_detected_full($crate::Feature::Fpmr)
+    };
+    ("sve") => {
+        $crate::is_detected_full($crate::Feature::Sve)
+    };
+    ("sve2") => {
+        $crate::is_detected_full($crate::Feature::Sve2)
+    };
+    ("sve2p1") => {
+        $crate::is_detected_full($crate::Feature::Sve2p1)
+    };
+    ("sve2_aes") => {
+        $crate::is_detected_full($crate::Feature::Sve2Aes)
+    };
+    ("sve2_bitperm") => {
+        $crate::is_detected_full($crate::Feature::Sve2Bitperm)
+    };
+    ("sve2_sha3") => {
+        $crate::is_detected_full($crate::Feature::Sve2Sha3)
+    };
+    ("sve2_sm4") => {
+        $crate::is_detected_full($crate::Feature::Sve2Sm4)
+    };
+    ("sve_b16b16") => {
+        $crate::is_detected_full($crate::Feature::SveB16b16)
+    };
+    ("f32mm") => {
+        $crate::is_detected_full($crate::Feature::F32mm)
+    };
+    ("f64mm") => {
+        $crate::is_detected_full($crate::Feature::F64mm)
+    };
+    ("sme") => {
+        $crate::is_detected_full($crate::Feature::Sme)
+    };
+    ("sme2") => {
+        $crate::is_detected_full($crate::Feature::Sme2)
+    };
+    ("sme2p1") => {
+        $crate::is_detected_full($crate::Feature::Sme2p1)
+    };
+    ("sme_b16b16") => {
+        $crate::is_detected_full($crate::Feature::SmeB16b16)
+    };
+    ("sme_f16f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF16f16)
+    };
+    ("sme_f64f64") => {
+        $crate::is_detected_full($crate::Feature::SmeF64f64)
+    };
+    ("sme_f8f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f16)
+    };
+    ("sme_f8f32") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f32)
+    };
+    ("sme_fa64") => {
+        $crate::is_detected_full($crate::Feature::SmeFa64)
+    };
+    ("sme_i16i64") => {
+        $crate::is_detected_full($crate::Feature::SmeI16i64)
+    };
+    ("sme_lutv2") => {
+        $crate::is_detected_full($crate::Feature::SmeLutv2)
+    };
+    ("ssve_fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot2)
+    };
+    ("ssve_fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot4)
+    };
+    ("ssve_fp8fma") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Fma)
+    };
+    // ── Catch-all — unknown feature name ─────────────────────────────────
+    ($other:literal) => {
+        ::core::compile_error!(::core::concat!(
+            "unknown aarch64 feature name: '",
+            $other,
+            "'",
+        ))
+    };
 }
