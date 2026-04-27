@@ -42,10 +42,13 @@ jobs:
       # The Neoverse N2 assertion test is `#[ignore]` by default but the
       # GH `windows-11-arm` and `ubuntu-24.04-arm` runners both ARE Neoverse
       # N2 / Cobalt 100, so we run it explicitly here. Failure means our
-      # detection regressed against the known hardware feature set.
+      # detection regressed against the known hardware feature set. Needs
+      # `--features registry` because several N2 features (sm4, paca, pacg,
+      # dpb, dpb2, fhm, fcma, frintts) are Registry-classified — IPFP can't
+      # see them.
       - name: Neoverse N2 hardware assertions
         if: matrix.os == 'windows-11-arm' || matrix.os == 'ubuntu-24.04-arm'
-        run: cargo test --test hardware_assertions -- --ignored neoverse_n2 --nocapture
+        run: cargo test --features registry --test hardware_assertions -- --ignored neoverse_n2 --nocapture
 
       - name: Dump features
         shell: bash
