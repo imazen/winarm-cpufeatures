@@ -30,10 +30,16 @@ use crate::features::Feature;
 const INIT_BIT: u64 = 1 << 63;
 
 /// A snapshot of detected features. Cheap to copy; `has` is a pure bit test.
+///
+/// The bit-packed representation (`lo` low 64 features, `hi` high 64
+/// features) is an implementation detail. Fields are visible only
+/// inside `crate::cache` so the cache machinery can publish/load words
+/// directly with `INIT_BIT` masking; every other consumer goes through
+/// type-safe [`Features::has`] / [`Features::with`] / [`Features::iter`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Features {
-    pub(crate) lo: u64,
-    pub(crate) hi: u64,
+    pub(in crate::cache) lo: u64,
+    pub(in crate::cache) hi: u64,
 }
 
 impl Features {

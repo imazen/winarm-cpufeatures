@@ -199,7 +199,10 @@ const _: () = {
     let mut i = 0;
     while i < ALL_FEATURES.len() {
         let bit = ALL_FEATURES[i] as u8;
-        assert!(bit < 128, "Feature discriminant out of range: must be in 0..128");
+        assert!(
+            bit < 128,
+            "Feature discriminant out of range: must be in 0..128"
+        );
         assert!(
             bit != 63,
             "Feature occupies bit 63, reserved as `INIT_BIT` in `lo` — pick a different discriminant",
