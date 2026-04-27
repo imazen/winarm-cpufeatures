@@ -12,7 +12,7 @@
 
 #![cfg(all(target_arch = "aarch64", feature = "nightly-sve"))]
 
-use winarm_cpufeatures::detected_full;
+use winarm_cpufeatures::is_aarch64_feature_detected_full;
 
 /// Execute SVE `cntb` — returns the number of bytes in an SVE vector.
 /// Any SVE-capable CPU returns one of {16, 32, 64, 128, 256} (128b..2048b).
@@ -32,11 +32,11 @@ unsafe fn sve_cntb() -> u64 {
 
 #[test]
 fn sve_detect_matches_execution() {
-    if !detected_full!("sve") {
-        eprintln!("sve not detected on this CPU — skipping execution check");
+    if !is_aarch64_feature_detected_full!("sve") {
+        eprintln!("sve not is_aarch64_feature_detected on this CPU — skipping execution check");
         return;
     }
-    // SAFETY: detected_full!("sve") confirmed SVE is present; RUSTFLAGS
+    // SAFETY: is_aarch64_feature_detected_full!("sve") confirmed SVE is present; RUSTFLAGS
     // target-feature=+sve makes the assembler accept the CNTB encoding.
     let vl = unsafe { sve_cntb() };
     assert!(vl > 0, "CNTB returned zero");

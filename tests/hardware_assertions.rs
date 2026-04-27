@@ -16,12 +16,12 @@
 
 #![cfg(target_arch = "aarch64")]
 
-use winarm_cpufeatures::{detected_full, set_registry_enabled};
+use winarm_cpufeatures::{is_aarch64_feature_detected_full, set_registry_enabled};
 
 /// Authorise the registry detection layer once per test process.
 ///
 /// Without this, the `registry` Cargo feature is compiled in but the
-/// runtime gate stays off — and `detected_full!` returns IPFP-only
+/// runtime gate stays off — and `is_aarch64_feature_detected_full!` returns IPFP-only
 /// answers, causing every registry-only feature (sm4, paca, dpb*, flagm*,
 /// dit, sb, ssbs, rand, …) to read `false`. Each ignored hardware test
 /// calls this at entry. Idempotent; uses `Once` to avoid repeated cache
@@ -71,13 +71,13 @@ fn neoverse_n2() {
         "flagm",
         "sve",
         "sve2",
-        "sve2_bitperm",
-        "sve2_sha3",
-        "sve2_sm4",
+        "sve2-bitperm",
+        "sve2-sha3",
+        "sve2-sm4",
     ] {
         assert!(
             dispatch(f),
-            "Neoverse N2 must have feature `{f}` but detected_full said no"
+            "Neoverse N2 must have feature `{f}` but is_aarch64_feature_detected_full said no"
         );
     }
 
@@ -85,8 +85,8 @@ fn neoverse_n2() {
     // N2 deliberately does not implement these; if we claim them, something
     // in the detection path is false-positive.
     for f in [
-        "sve2_aes",
-        "sve_b16b16",
+        "sve2-aes",
+        "sve-b16b16",
         "f32mm",
         "f64mm",
         "sme",
@@ -99,7 +99,7 @@ fn neoverse_n2() {
     ] {
         assert!(
             !dispatch(f),
-            "Neoverse N2 must NOT have feature `{f}` but detected_full said yes"
+            "Neoverse N2 must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
         );
     }
 }
@@ -140,15 +140,15 @@ fn neoverse_v2() {
         "flagm",
         "sve",
         "sve2",
-        "sve2_bitperm",
-        "sve2_sha3",
-        "sve2_sm4",
+        "sve2-bitperm",
+        "sve2-sha3",
+        "sve2-sm4",
         // V2-only additions:
-        "sve2_aes",
+        "sve2-aes",
     ] {
         assert!(
             dispatch(f),
-            "Neoverse V2 must have feature `{f}` but detected_full said no"
+            "Neoverse V2 must have feature `{f}` but is_aarch64_feature_detected_full said no"
         );
     }
 
@@ -156,7 +156,7 @@ fn neoverse_v2() {
     for f in ["sme", "sme2", "sme2p1", "mte"] {
         assert!(
             !dispatch(f),
-            "Neoverse V2 must NOT have feature `{f}` but detected_full said yes"
+            "Neoverse V2 must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
         );
     }
 }
@@ -182,7 +182,7 @@ fn snapdragon_x() {
     ] {
         assert!(
             dispatch(f),
-            "Snapdragon X (Oryon) must have feature `{f}` but detected_full said no"
+            "Snapdragon X (Oryon) must have feature `{f}` but is_aarch64_feature_detected_full said no"
         );
     }
 
@@ -190,7 +190,7 @@ fn snapdragon_x() {
     for f in ["sve", "sve2", "sme", "mte"] {
         assert!(
             !dispatch(f),
-            "Snapdragon X (Oryon) must NOT have feature `{f}` but detected_full said yes"
+            "Snapdragon X (Oryon) must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
         );
     }
 }
@@ -219,7 +219,7 @@ fn sc8280xp() {
     ] {
         assert!(
             dispatch(f),
-            "SC8280XP must have feature `{f}` but detected_full said no"
+            "SC8280XP must have feature `{f}` but is_aarch64_feature_detected_full said no"
         );
     }
 
@@ -229,64 +229,64 @@ fn sc8280xp() {
     ] {
         assert!(
             !dispatch(f),
-            "SC8280XP must NOT have feature `{f}` but detected_full said yes"
+            "SC8280XP must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
         );
     }
 }
 
-/// detected_full! takes a literal, but these tests iterate over `&str`. Route
+/// is_aarch64_feature_detected_full! takes a literal, but these tests iterate over `&str`. Route
 /// each name through a match so the macro sees a literal at each site.
 fn dispatch(name: &str) -> bool {
     match name {
-        "asimd" => detected_full!("asimd"),
-        "fp" => detected_full!("fp"),
-        "fp16" => detected_full!("fp16"),
-        "fhm" => detected_full!("fhm"),
-        "fcma" => detected_full!("fcma"),
-        "bf16" => detected_full!("bf16"),
-        "i8mm" => detected_full!("i8mm"),
-        "jsconv" => detected_full!("jsconv"),
-        "frintts" => detected_full!("frintts"),
-        "rdm" => detected_full!("rdm"),
-        "dotprod" => detected_full!("dotprod"),
-        "aes" => detected_full!("aes"),
-        "pmull" => detected_full!("pmull"),
-        "sha2" => detected_full!("sha2"),
-        "sha3" => detected_full!("sha3"),
-        "sm4" => detected_full!("sm4"),
-        "crc" => detected_full!("crc"),
-        "lse" => detected_full!("lse"),
-        "lse2" => detected_full!("lse2"),
-        "lse128" => detected_full!("lse128"),
-        "rcpc" => detected_full!("rcpc"),
-        "rcpc2" => detected_full!("rcpc2"),
-        "rcpc3" => detected_full!("rcpc3"),
-        "paca" => detected_full!("paca"),
-        "pacg" => detected_full!("pacg"),
-        "bti" => detected_full!("bti"),
-        "dpb" => detected_full!("dpb"),
-        "dpb2" => detected_full!("dpb2"),
-        "mte" => detected_full!("mte"),
-        "mops" => detected_full!("mops"),
-        "sb" => detected_full!("sb"),
-        "ssbs" => detected_full!("ssbs"),
-        "flagm" => detected_full!("flagm"),
-        "flagm2" => detected_full!("flagm2"),
-        "rand" => detected_full!("rand"),
-        "wfxt" => detected_full!("wfxt"),
-        "sve" => detected_full!("sve"),
-        "sve2" => detected_full!("sve2"),
-        "sve2p1" => detected_full!("sve2p1"),
-        "sve2_aes" => detected_full!("sve2_aes"),
-        "sve2_bitperm" => detected_full!("sve2_bitperm"),
-        "sve2_sha3" => detected_full!("sve2_sha3"),
-        "sve2_sm4" => detected_full!("sve2_sm4"),
-        "sve_b16b16" => detected_full!("sve_b16b16"),
-        "f32mm" => detected_full!("f32mm"),
-        "f64mm" => detected_full!("f64mm"),
-        "sme" => detected_full!("sme"),
-        "sme2" => detected_full!("sme2"),
-        "sme2p1" => detected_full!("sme2p1"),
+        "asimd" => is_aarch64_feature_detected_full!("asimd"),
+        "fp" => is_aarch64_feature_detected_full!("fp"),
+        "fp16" => is_aarch64_feature_detected_full!("fp16"),
+        "fhm" => is_aarch64_feature_detected_full!("fhm"),
+        "fcma" => is_aarch64_feature_detected_full!("fcma"),
+        "bf16" => is_aarch64_feature_detected_full!("bf16"),
+        "i8mm" => is_aarch64_feature_detected_full!("i8mm"),
+        "jsconv" => is_aarch64_feature_detected_full!("jsconv"),
+        "frintts" => is_aarch64_feature_detected_full!("frintts"),
+        "rdm" => is_aarch64_feature_detected_full!("rdm"),
+        "dotprod" => is_aarch64_feature_detected_full!("dotprod"),
+        "aes" => is_aarch64_feature_detected_full!("aes"),
+        "pmull" => is_aarch64_feature_detected_full!("pmull"),
+        "sha2" => is_aarch64_feature_detected_full!("sha2"),
+        "sha3" => is_aarch64_feature_detected_full!("sha3"),
+        "sm4" => is_aarch64_feature_detected_full!("sm4"),
+        "crc" => is_aarch64_feature_detected_full!("crc"),
+        "lse" => is_aarch64_feature_detected_full!("lse"),
+        "lse2" => is_aarch64_feature_detected_full!("lse2"),
+        "lse128" => is_aarch64_feature_detected_full!("lse128"),
+        "rcpc" => is_aarch64_feature_detected_full!("rcpc"),
+        "rcpc2" => is_aarch64_feature_detected_full!("rcpc2"),
+        "rcpc3" => is_aarch64_feature_detected_full!("rcpc3"),
+        "paca" => is_aarch64_feature_detected_full!("paca"),
+        "pacg" => is_aarch64_feature_detected_full!("pacg"),
+        "bti" => is_aarch64_feature_detected_full!("bti"),
+        "dpb" => is_aarch64_feature_detected_full!("dpb"),
+        "dpb2" => is_aarch64_feature_detected_full!("dpb2"),
+        "mte" => is_aarch64_feature_detected_full!("mte"),
+        "mops" => is_aarch64_feature_detected_full!("mops"),
+        "sb" => is_aarch64_feature_detected_full!("sb"),
+        "ssbs" => is_aarch64_feature_detected_full!("ssbs"),
+        "flagm" => is_aarch64_feature_detected_full!("flagm"),
+        "flagm2" => is_aarch64_feature_detected_full!("flagm2"),
+        "rand" => is_aarch64_feature_detected_full!("rand"),
+        "wfxt" => is_aarch64_feature_detected_full!("wfxt"),
+        "sve" => is_aarch64_feature_detected_full!("sve"),
+        "sve2" => is_aarch64_feature_detected_full!("sve2"),
+        "sve2p1" => is_aarch64_feature_detected_full!("sve2p1"),
+        "sve2-aes" => is_aarch64_feature_detected_full!("sve2-aes"),
+        "sve2-bitperm" => is_aarch64_feature_detected_full!("sve2-bitperm"),
+        "sve2-sha3" => is_aarch64_feature_detected_full!("sve2-sha3"),
+        "sve2-sm4" => is_aarch64_feature_detected_full!("sve2-sm4"),
+        "sve-b16b16" => is_aarch64_feature_detected_full!("sve-b16b16"),
+        "f32mm" => is_aarch64_feature_detected_full!("f32mm"),
+        "f64mm" => is_aarch64_feature_detected_full!("f64mm"),
+        "sme" => is_aarch64_feature_detected_full!("sme"),
+        "sme2" => is_aarch64_feature_detected_full!("sme2"),
+        "sme2p1" => is_aarch64_feature_detected_full!("sme2p1"),
         other => panic!("unhandled feature in hardware_assertions dispatch: {other}"),
     }
 }

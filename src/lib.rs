@@ -27,7 +27,7 @@
 //!    publishes. Covers ~30 stdarch names IPFP can't reach: `fhm`, `fcma`,
 //!    `frintts`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`,
 //!    `sb`, `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`,
-//!    `sm4`, `rcpc2`/`rcpc3`, `pauth_lr`, `lse128`, etc. One
+//!    `sm4`, `rcpc2`/`rcpc3`, `pauth-lr`, `lse128`, etc. One
 //!    `RegOpenKeyExW` + a handful of `RegGetValueW` calls on first probe.
 //!
 //!    Cargo features union across the dependency graph — if any
@@ -45,11 +45,11 @@
 //!
 //! | Macro              | Backend on Windows ARM           | Compile error if feature… |
 //! |--------------------|----------------------------------|---------------------------|
-//! | [`detected!`]      | IPFP only (always cheap)         | needs the registry layer  |
-//! | [`detected_full!`] | IPFP + (with `registry`) CP keys | never                     |
+//! | [`is_aarch64_feature_detected!`]      | IPFP only (always cheap)         | needs the registry layer  |
+//! | [`is_aarch64_feature_detected_full!`] | IPFP + (with `registry`) CP keys | never                     |
 //!
-//! Without the `registry` feature, [`detected_full!`] is identical to
-//! [`detected!`]. With it, [`detected_full!`] additionally consults the
+//! Without the `registry` feature, [`is_aarch64_feature_detected_full!`] is identical to
+//! [`is_aarch64_feature_detected!`]. With it, [`is_aarch64_feature_detected_full!`] additionally consults the
 //! registry-decoded bits.
 //!
 //! Each macro maintains its own cache. Probes are idempotent so racing
@@ -61,22 +61,22 @@
 //! ## Quick reference
 //!
 //! ```no_run
-//! use winarm_cpufeatures::{detected, detected_full, set_registry_enabled};
+//! use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full, set_registry_enabled};
 //!
 //! // Always-on. `rdm` works because it's IPFP-derived (DP||LSE → RDM).
-//! if detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
-//! if detected!("sve") { /* SVE kernel */ }
-//! if detected!("aes") { /* AES instructions */ }
+//! if is_aarch64_feature_detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
+//! if is_aarch64_feature_detected!("sve") { /* SVE kernel */ }
+//! if is_aarch64_feature_detected!("aes") { /* AES instructions */ }
 //!
 //! // Authorise registry layer at runtime (compile-time `registry` feature
 //! // must also be enabled, or this is a no-op). Best done once at startup,
-//! // before any `detected_full!` query.
+//! // before any `is_aarch64_feature_detected_full!` query.
 //! set_registry_enabled(true);
 //!
-//! if detected_full!("paca") { /* Pointer Auth address-key */ }
+//! if is_aarch64_feature_detected_full!("paca") { /* Pointer Auth address-key */ }
 //!
 //! // Compile error: "paca" is registry-only.
-//! // let _ = winarm_cpufeatures::detected!("paca");
+//! // let _ = winarm_cpufeatures::is_aarch64_feature_detected!("paca");
 //! ```
 //!
 //! ## Comparison to other crates
@@ -103,7 +103,6 @@
 )]
 
 mod cache;
-mod detect;
 mod features;
 
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
@@ -115,7 +114,7 @@ pub use features::Feature;
 // ─── Macro dispatch — one arm per feature name ───────────────────────────
 //
 // Both macros use direct `macro_rules!` arm dispatch instead of a const
-// lookup table. Each `detected!`/`detected_full!` call site expands to
+// lookup table. Each `is_aarch64_feature_detected!`/`is_aarch64_feature_detected_full!` call site expands to
 // exactly one expression — no const-eval, no `panic!`-based assertions,
 // no string-compare loop. This keeps downstream compile time flat in the
 // number of call sites.
@@ -123,7 +122,7 @@ pub use features::Feature;
 // Source of truth for the (name, variant, detection-method) triples is
 // `features.rs::features!`. If you add a feature there, add an arm here
 // in BOTH macros — Registry-classified names get a `compile_error!`
-// arm in `detected!` pointing at `detected_full!`. The smoke tests
+// arm in `is_aarch64_feature_detected!` pointing at `is_aarch64_feature_detected_full!`. The smoke tests
 // cover every name through both macros, so missing arms surface
 // immediately.
 
@@ -132,7 +131,7 @@ pub use features::Feature;
 /// **Compile error** if `$name` is one of the ~33 features Microsoft has
 /// never exposed via `IsProcessorFeaturePresent` (e.g. `paca`, `bti`,
 /// `dpb`, `flagm`, `mte`). Those require registry detection — use
-/// [`detected_full!`].
+/// [`is_aarch64_feature_detected_full!`].
 ///
 /// **Compile error** if `$name` is not a known aarch64 feature name.
 ///
@@ -141,12 +140,12 @@ pub use features::Feature;
 /// access.
 ///
 /// ```no_run
-/// if winarm_cpufeatures::detected!("sve") {
+/// if winarm_cpufeatures::is_aarch64_feature_detected!("sve") {
 ///     // SVE kernel
 /// }
 /// ```
 #[macro_export]
-macro_rules! detected {
+macro_rules! is_aarch64_feature_detected {
     // ── Ipfp / Both — direct dispatch to `is_detected` ────────────────────
     ("asimd") => {
         $crate::is_detected($crate::Feature::Asimd)
@@ -205,19 +204,19 @@ macro_rules! detected {
     ("sve2p1") => {
         $crate::is_detected($crate::Feature::Sve2p1)
     };
-    ("sve2_aes") => {
+    ("sve2-aes") => {
         $crate::is_detected($crate::Feature::Sve2Aes)
     };
-    ("sve2_bitperm") => {
+    ("sve2-bitperm") => {
         $crate::is_detected($crate::Feature::Sve2Bitperm)
     };
-    ("sve2_sha3") => {
+    ("sve2-sha3") => {
         $crate::is_detected($crate::Feature::Sve2Sha3)
     };
-    ("sve2_sm4") => {
+    ("sve2-sm4") => {
         $crate::is_detected($crate::Feature::Sve2Sm4)
     };
-    ("sve_b16b16") => {
+    ("sve-b16b16") => {
         $crate::is_detected($crate::Feature::SveB16b16)
     };
     ("f32mm") => {
@@ -235,138 +234,138 @@ macro_rules! detected {
     ("sme2p1") => {
         $crate::is_detected($crate::Feature::Sme2p1)
     };
-    ("sme_b16b16") => {
+    ("sme-b16b16") => {
         $crate::is_detected($crate::Feature::SmeB16b16)
     };
-    ("sme_f16f16") => {
+    ("sme-f16f16") => {
         $crate::is_detected($crate::Feature::SmeF16f16)
     };
-    ("sme_f64f64") => {
+    ("sme-f64f64") => {
         $crate::is_detected($crate::Feature::SmeF64f64)
     };
-    ("sme_f8f16") => {
+    ("sme-f8f16") => {
         $crate::is_detected($crate::Feature::SmeF8f16)
     };
-    ("sme_f8f32") => {
+    ("sme-f8f32") => {
         $crate::is_detected($crate::Feature::SmeF8f32)
     };
-    ("sme_fa64") => {
+    ("sme-fa64") => {
         $crate::is_detected($crate::Feature::SmeFa64)
     };
-    ("sme_i16i64") => {
+    ("sme-i16i64") => {
         $crate::is_detected($crate::Feature::SmeI16i64)
     };
-    ("sme_lutv2") => {
+    ("sme-lutv2") => {
         $crate::is_detected($crate::Feature::SmeLutv2)
     };
-    ("ssve_fp8dot2") => {
+    ("ssve-fp8dot2") => {
         $crate::is_detected($crate::Feature::SsveFp8Dot2)
     };
-    ("ssve_fp8dot4") => {
+    ("ssve-fp8dot4") => {
         $crate::is_detected($crate::Feature::SsveFp8Dot4)
     };
-    ("ssve_fp8fma") => {
+    ("ssve-fp8fma") => {
         $crate::is_detected($crate::Feature::SsveFp8Fma)
     };
-    // ── Registry-only — compile error pointing at detected_full! ─────────
+    // ── Registry-only — compile error pointing at is_aarch64_feature_detected_full! ─────────
     ("fhm") => {
-        ::core::compile_error!(::core::concat!("feature 'fhm' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fhm' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fcma") => {
-        ::core::compile_error!(::core::concat!("feature 'fcma' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fcma' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("frintts") => {
-        ::core::compile_error!(::core::concat!("feature 'frintts' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'frintts' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("sm4") => {
-        ::core::compile_error!(::core::concat!("feature 'sm4' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'sm4' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("lse128") => {
-        ::core::compile_error!(::core::concat!("feature 'lse128' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'lse128' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("rcpc2") => {
-        ::core::compile_error!(::core::concat!("feature 'rcpc2' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'rcpc2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("rcpc3") => {
-        ::core::compile_error!(::core::concat!("feature 'rcpc3' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'rcpc3' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("paca") => {
-        ::core::compile_error!(::core::concat!("feature 'paca' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'paca' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("pacg") => {
-        ::core::compile_error!(::core::concat!("feature 'pacg' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'pacg' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
-    ("pauth_lr") => {
-        ::core::compile_error!(::core::concat!("feature 'pauth_lr' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+    ("pauth-lr") => {
+        ::core::compile_error!(::core::concat!("feature 'pauth-lr' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("bti") => {
-        ::core::compile_error!(::core::concat!("feature 'bti' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'bti' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("dpb") => {
-        ::core::compile_error!(::core::concat!("feature 'dpb' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'dpb' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("dpb2") => {
-        ::core::compile_error!(::core::concat!("feature 'dpb2' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'dpb2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("mte") => {
-        ::core::compile_error!(::core::concat!("feature 'mte' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'mte' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("mops") => {
-        ::core::compile_error!(::core::concat!("feature 'mops' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'mops' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("dit") => {
-        ::core::compile_error!(::core::concat!("feature 'dit' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'dit' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("sb") => {
-        ::core::compile_error!(::core::concat!("feature 'sb' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'sb' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("ssbs") => {
-        ::core::compile_error!(::core::concat!("feature 'ssbs' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'ssbs' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("flagm") => {
-        ::core::compile_error!(::core::concat!("feature 'flagm' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'flagm' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("flagm2") => {
-        ::core::compile_error!(::core::concat!("feature 'flagm2' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'flagm2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("rand") => {
-        ::core::compile_error!(::core::concat!("feature 'rand' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'rand' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("tme") => {
-        ::core::compile_error!(::core::concat!("feature 'tme' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'tme' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("ecv") => {
-        ::core::compile_error!(::core::concat!("feature 'ecv' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'ecv' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("cssc") => {
-        ::core::compile_error!(::core::concat!("feature 'cssc' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'cssc' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("wfxt") => {
-        ::core::compile_error!(::core::concat!("feature 'wfxt' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'wfxt' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("hbc") => {
-        ::core::compile_error!(::core::concat!("feature 'hbc' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'hbc' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("lut") => {
-        ::core::compile_error!(::core::concat!("feature 'lut' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'lut' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("faminmax") => {
-        ::core::compile_error!(::core::concat!("feature 'faminmax' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'faminmax' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fp8") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fp8' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fp8dot2") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8dot2' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fp8dot2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fp8dot4") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8dot4' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fp8dot4' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fp8fma") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8fma' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fp8fma' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     ("fpmr") => {
-        ::core::compile_error!(::core::concat!("feature 'fpmr' requires registry detection — use winarm_cpufeatures::detected_full!() instead"))
+        ::core::compile_error!(::core::concat!("feature 'fpmr' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
     };
     // ── Catch-all — unknown feature name ─────────────────────────────────
     ($other:literal) => {
@@ -393,12 +392,12 @@ macro_rules! detected {
 /// access.
 ///
 /// ```no_run
-/// if winarm_cpufeatures::detected_full!("rdm") {
+/// if winarm_cpufeatures::is_aarch64_feature_detected_full!("rdm") {
 ///     // Rounding Doubling Multiply Accumulate
 /// }
 /// ```
 #[macro_export]
-macro_rules! detected_full {
+macro_rules! is_aarch64_feature_detected_full {
     ("asimd") => {
         $crate::is_detected_full($crate::Feature::Asimd)
     };
@@ -474,7 +473,7 @@ macro_rules! detected_full {
     ("pacg") => {
         $crate::is_detected_full($crate::Feature::Pacg)
     };
-    ("pauth_lr") => {
+    ("pauth-lr") => {
         $crate::is_detected_full($crate::Feature::PauthLr)
     };
     ("bti") => {
@@ -555,19 +554,19 @@ macro_rules! detected_full {
     ("sve2p1") => {
         $crate::is_detected_full($crate::Feature::Sve2p1)
     };
-    ("sve2_aes") => {
+    ("sve2-aes") => {
         $crate::is_detected_full($crate::Feature::Sve2Aes)
     };
-    ("sve2_bitperm") => {
+    ("sve2-bitperm") => {
         $crate::is_detected_full($crate::Feature::Sve2Bitperm)
     };
-    ("sve2_sha3") => {
+    ("sve2-sha3") => {
         $crate::is_detected_full($crate::Feature::Sve2Sha3)
     };
-    ("sve2_sm4") => {
+    ("sve2-sm4") => {
         $crate::is_detected_full($crate::Feature::Sve2Sm4)
     };
-    ("sve_b16b16") => {
+    ("sve-b16b16") => {
         $crate::is_detected_full($crate::Feature::SveB16b16)
     };
     ("f32mm") => {
@@ -585,37 +584,37 @@ macro_rules! detected_full {
     ("sme2p1") => {
         $crate::is_detected_full($crate::Feature::Sme2p1)
     };
-    ("sme_b16b16") => {
+    ("sme-b16b16") => {
         $crate::is_detected_full($crate::Feature::SmeB16b16)
     };
-    ("sme_f16f16") => {
+    ("sme-f16f16") => {
         $crate::is_detected_full($crate::Feature::SmeF16f16)
     };
-    ("sme_f64f64") => {
+    ("sme-f64f64") => {
         $crate::is_detected_full($crate::Feature::SmeF64f64)
     };
-    ("sme_f8f16") => {
+    ("sme-f8f16") => {
         $crate::is_detected_full($crate::Feature::SmeF8f16)
     };
-    ("sme_f8f32") => {
+    ("sme-f8f32") => {
         $crate::is_detected_full($crate::Feature::SmeF8f32)
     };
-    ("sme_fa64") => {
+    ("sme-fa64") => {
         $crate::is_detected_full($crate::Feature::SmeFa64)
     };
-    ("sme_i16i64") => {
+    ("sme-i16i64") => {
         $crate::is_detected_full($crate::Feature::SmeI16i64)
     };
-    ("sme_lutv2") => {
+    ("sme-lutv2") => {
         $crate::is_detected_full($crate::Feature::SmeLutv2)
     };
-    ("ssve_fp8dot2") => {
+    ("ssve-fp8dot2") => {
         $crate::is_detected_full($crate::Feature::SsveFp8Dot2)
     };
-    ("ssve_fp8dot4") => {
+    ("ssve-fp8dot4") => {
         $crate::is_detected_full($crate::Feature::SsveFp8Dot4)
     };
-    ("ssve_fp8fma") => {
+    ("ssve-fp8fma") => {
         $crate::is_detected_full($crate::Feature::SsveFp8Fma)
     };
     // ── Catch-all — unknown feature name ─────────────────────────────────

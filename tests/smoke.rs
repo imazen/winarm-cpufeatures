@@ -4,36 +4,36 @@
 //! routing) live in `src/cache.rs`'s `#[cfg(test)] mod` because they need
 //! `pub(crate)` items. This file holds public-API-only assertions.
 
-use winarm_cpufeatures::{detected, detected_full};
+use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
 
 #[test]
 fn fast_macro_compiles_for_ipfp_features() {
     // All these features have DetectionMethod::Ipfp; the fast macro accepts them.
-    let _ = detected!("asimd");
-    let _ = detected!("fp");
-    let _ = detected!("aes");
-    let _ = detected!("crc");
-    let _ = detected!("lse");
-    let _ = detected!("dotprod");
-    let _ = detected!("jsconv");
-    let _ = detected!("rcpc");
-    let _ = detected!("sve");
-    let _ = detected!("sve2");
-    let _ = detected!("sve2p1");
+    let _ = is_aarch64_feature_detected!("asimd");
+    let _ = is_aarch64_feature_detected!("fp");
+    let _ = is_aarch64_feature_detected!("aes");
+    let _ = is_aarch64_feature_detected!("crc");
+    let _ = is_aarch64_feature_detected!("lse");
+    let _ = is_aarch64_feature_detected!("dotprod");
+    let _ = is_aarch64_feature_detected!("jsconv");
+    let _ = is_aarch64_feature_detected!("rcpc");
+    let _ = is_aarch64_feature_detected!("sve");
+    let _ = is_aarch64_feature_detected!("sve2");
+    let _ = is_aarch64_feature_detected!("sve2p1");
 }
 
 #[test]
 fn full_macro_compiles_for_all_features() {
-    // detected_full! accepts every known name regardless of detection method.
-    let _ = detected_full!("rdm");
-    let _ = detected_full!("bf16");
-    let _ = detected_full!("i8mm");
-    let _ = detected_full!("sve");
-    let _ = detected_full!("sme");
-    let _ = detected_full!("paca");
-    let _ = detected_full!("dpb2");
-    let _ = detected_full!("flagm2");
-    let _ = detected_full!("frintts");
+    // is_aarch64_feature_detected_full! accepts every known name regardless of detection method.
+    let _ = is_aarch64_feature_detected_full!("rdm");
+    let _ = is_aarch64_feature_detected_full!("bf16");
+    let _ = is_aarch64_feature_detected_full!("i8mm");
+    let _ = is_aarch64_feature_detected_full!("sve");
+    let _ = is_aarch64_feature_detected_full!("sme");
+    let _ = is_aarch64_feature_detected_full!("paca");
+    let _ = is_aarch64_feature_detected_full!("dpb2");
+    let _ = is_aarch64_feature_detected_full!("flagm2");
+    let _ = is_aarch64_feature_detected_full!("frintts");
 }
 
 #[cfg(not(target_arch = "aarch64"))]
@@ -53,7 +53,7 @@ fn non_windows_aarch64_matches_stdarch() {
         ($($name:tt),* $(,)?) => {
             $(
                 assert_eq!(
-                    detected_full!($name),
+                    is_aarch64_feature_detected_full!($name),
                     std::arch::is_aarch64_feature_detected!($name),
                     concat!("mismatch for feature `", $name, "`")
                 );
@@ -61,9 +61,9 @@ fn non_windows_aarch64_matches_stdarch() {
         };
     }
     // All 37 stable stdarch feature names that share the same spelling
-    // between detected_full! and is_aarch64_feature_detected!.
+    // between is_aarch64_feature_detected_full! and is_aarch64_feature_detected!.
     // SVE2 sub-features are excluded: stdarch uses dashes (e.g. "sve2-aes")
-    // while this crate uses underscores (e.g. "sve2_aes").
+    // while this crate uses underscores (e.g. "sve2-aes").
     check!(
         "asimd", "fp", "fp16", "fhm", "fcma", "bf16", "i8mm", "jsconv", "frintts", "rdm",
         "dotprod", "aes", "pmull", "sha2", "sha3", "sm4", "crc", "lse", "lse2", "rcpc", "rcpc2",

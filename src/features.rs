@@ -6,8 +6,8 @@
 //!
 //! Each feature has a [`DetectionMethod`] describing the cheapest backend
 //! that can confirm it on Windows-on-ARM. This drives the compile-time
-//! dispatch between [`crate::detected!`] (fast, IPFP-only) and
-//! [`crate::detected_full!`] (slow, reads the registry).
+//! dispatch between [`crate::is_aarch64_feature_detected!`] (fast, IPFP-only) and
+//! [`crate::is_aarch64_feature_detected_full!`] (slow, reads the registry).
 
 #![allow(non_camel_case_types)]
 
@@ -114,7 +114,7 @@ features! {
     // ── Pointer authentication / control-flow ─────────────────────────────
     Paca       = (23, "paca",         Registry),
     Pacg       = (24, "pacg",         Registry),
-    PauthLr    = (25, "pauth_lr",     Registry),
+    PauthLr    = (25, "pauth-lr",     Registry),
     Bti        = (26, "bti",          Registry),
     // ── Memory features ────────────────────────────────────────────────────
     Dpb        = (27, "dpb",          Registry),
@@ -147,11 +147,11 @@ features! {
     Sve        = (49, "sve",          Ipfp),
     Sve2       = (50, "sve2",         Ipfp),
     Sve2p1     = (51, "sve2p1",       Ipfp),
-    Sve2Aes    = (52, "sve2_aes",     Ipfp),
-    Sve2Bitperm= (53, "sve2_bitperm", Ipfp),
-    Sve2Sha3   = (54, "sve2_sha3",    Ipfp),
-    Sve2Sm4    = (55, "sve2_sm4",     Ipfp),
-    SveB16b16  = (56, "sve_b16b16",   Ipfp),
+    Sve2Aes    = (52, "sve2-aes",     Ipfp),
+    Sve2Bitperm= (53, "sve2-bitperm", Ipfp),
+    Sve2Sha3   = (54, "sve2-sha3",    Ipfp),
+    Sve2Sm4    = (55, "sve2-sm4",     Ipfp),
+    SveB16b16  = (56, "sve-b16b16",   Ipfp),
     F32mm      = (57, "f32mm",        Ipfp),
     F64mm      = (58, "f64mm",        Ipfp),
     // ── SME / SME2 (IPFP since SDK 26100, registry decode for `sme` only) ─
@@ -159,17 +159,17 @@ features! {
     Sme        = (59, "sme",          Both),
     Sme2       = (60, "sme2",         Ipfp),
     Sme2p1     = (61, "sme2p1",       Ipfp),
-    SmeB16b16  = (62, "sme_b16b16",   Ipfp),
-    SmeF16f16  = (63, "sme_f16f16",   Ipfp),
-    SmeF64f64  = (64, "sme_f64f64",   Ipfp),
-    SmeF8f16   = (65, "sme_f8f16",    Ipfp),
-    SmeF8f32   = (66, "sme_f8f32",    Ipfp),
-    SmeFa64    = (67, "sme_fa64",     Ipfp),
-    SmeI16i64  = (68, "sme_i16i64",   Ipfp),
-    SmeLutv2   = (69, "sme_lutv2",    Ipfp),
-    SsveFp8Dot2= (70, "ssve_fp8dot2", Ipfp),
-    SsveFp8Dot4= (71, "ssve_fp8dot4", Ipfp),
-    SsveFp8Fma = (72, "ssve_fp8fma",  Ipfp),
+    SmeB16b16  = (62, "sme-b16b16",   Ipfp),
+    SmeF16f16  = (63, "sme-f16f16",   Ipfp),
+    SmeF64f64  = (64, "sme-f64f64",   Ipfp),
+    SmeF8f16   = (65, "sme-f8f16",    Ipfp),
+    SmeF8f32   = (66, "sme-f8f32",    Ipfp),
+    SmeFa64    = (67, "sme-fa64",     Ipfp),
+    SmeI16i64  = (68, "sme-i16i64",   Ipfp),
+    SmeLutv2   = (69, "sme-lutv2",    Ipfp),
+    SsveFp8Dot2= (70, "ssve-fp8dot2", Ipfp),
+    SsveFp8Dot4= (71, "ssve-fp8dot4", Ipfp),
+    SsveFp8Fma = (72, "ssve-fp8fma",  Ipfp),
 }
 
 #[cfg(test)]

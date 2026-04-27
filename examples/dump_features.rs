@@ -1,4 +1,4 @@
-//! Dump every detected aarch64 feature with its detection state.
+//! Dump every is_aarch64_feature_detected aarch64 feature with its detection state.
 //!
 //! Run via `cargo run --example dump_features`. Output is plain text, one
 //! line per feature, suitable for committing to a runner-feature matrix or
@@ -15,7 +15,7 @@ fn main() {
     println!("# feature_count={}", Feature::all().count());
     println!();
     let detected_count = Feature::all().filter(|x| f.has(*x)).count();
-    println!("# {detected_count} features detected:");
+    println!("# {detected_count} features is_aarch64_feature_detected:");
     for feat in Feature::all() {
         let mark = if f.has(feat) { "[+]" } else { "[ ]" };
         println!("{mark} {}", feat.name());
