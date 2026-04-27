@@ -18,10 +18,14 @@ sve-b16b16, sme, sme2, sme2p1, ...
 Ships a drop-in `is_aarch64_feature_detected!` macro — same name, same dashed feature spelling, same call shape as std's. Detection strategy:
 
 1. **`IsProcessorFeaturePresent`** using every `PF_ARM_*` constant through Windows SDK 26100 — covers the ~30 features Microsoft does expose, including the SVE/SME family added in Windows 11 24H2.
-2. **Registry `CP <hex>` parsing** (opt-in via the `registry` Cargo feature + `set_registry_enabled(true)` runtime call) — reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP 4030` etc., the AArch64 `ID_AA64*_EL1` snapshots Windows publishes. Same undocumented-but-stable approach used by LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime.
+2. **Registry `CP <hex>` parsing** (opt-in via the `registry` Cargo feature; on by default at runtime when that feature is enabled, suppressible with `set_registry_enabled(false)`) — reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP 4030` etc., the AArch64 `ID_AA64*_EL1` snapshots Windows publishes. Same undocumented-but-stable approach used by LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime.
 3. **DP/LSE → RDM architectural inference** — Windows-on-ARM mandates ARMv8.1-A, which guarantees FEAT_RDM; matches what .NET 10 ships (`dotnet/runtime#109493`).
 
-On non-Windows aarch64 targets, `is_aarch64_feature_detected!` expands directly to `std::arch::is_aarch64_feature_detected!` — no added cache layer, no overhead. On non-aarch64 targets the macro returns `false` (whereas std's macro doesn't compile there), so cross-platform code can use one spelling.
+On non-Windows aarch64 targets, `is_aarch64_feature_detected!` expands directly to `std::arch::is_aarch64_feature_detected!` — no added cache layer, no overhead, no rejected-name footgun. Future stdarch additions Just Work without crate updates. On non-aarch64 targets the macro returns `false` for any known aarch64 feature name (whereas std's macro doesn't compile there at all), so cross-platform code can use one spelling everywhere.
+
+### Relationship to upstream std
+
+[rust-lang/rust#155856](https://github.com/rust-lang/rust/pull/155856) ("std_detect: support detecting more features on aarch64 Windows") wires 8 of the names this crate already covers (`fp16`, `bf16`, `i8mm`, `lse2`, `sha3`, `f32mm`, `f64mm`, plus the same DP/LSE→RDM inference for `rdm`) into std itself. Once that lands stable, std and this crate agree on those names on Windows. This crate's remaining value-add is the registry-decoded layer covering the ~25 names Microsoft has never exposed via `IsProcessorFeaturePresent` — `paca`, `pacg`, `bti`, `dpb`, `dpb2`, `mte`, `mops`, `flagm`, `flagm2`, `dit`, `sb`, `ssbs`, `rand`, `cssc`, `wfxt`, `hbc`, `lut`, `faminmax`, `rcpc2`, `rcpc3`, `pauth-lr`, `lse128`, `sm4`, `fhm`, `fcma`, `frintts`, plus the FP8 family.
 
 ## Usage
 
