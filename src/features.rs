@@ -160,7 +160,8 @@ features! {
     Sme2       = (60, "sme2",         Ipfp),
     Sme2p1     = (61, "sme2p1",       Ipfp),
     SmeB16b16  = (62, "sme-b16b16",   Ipfp),
-    SmeF16f16  = (63, "sme-f16f16",   Ipfp),
+    // Bit 63 of `lo` is reserved as `INIT_BIT` for the cache machinery
+    // in `cache.rs`. Features must avoid bit 63 (lo) and bit 127 (hi).
     SmeF64f64  = (64, "sme-f64f64",   Ipfp),
     SmeF8f16   = (65, "sme-f8f16",    Ipfp),
     SmeF8f32   = (66, "sme-f8f32",    Ipfp),
@@ -170,6 +171,8 @@ features! {
     SsveFp8Dot2= (70, "ssve-fp8dot2", Ipfp),
     SsveFp8Dot4= (71, "ssve-fp8dot4", Ipfp),
     SsveFp8Fma = (72, "ssve-fp8fma",  Ipfp),
+    // Moved here from bit 63 because that slot is reserved for INIT_BIT.
+    SmeF16f16  = (73, "sme-f16f16",   Ipfp),
 }
 
 #[cfg(test)]
@@ -177,9 +180,11 @@ mod tests {
     use super::*;
 
     /// Number of features enumerated by `features!`. The detection cache
-    /// uses two `u64`s (lo/hi), so the count must stay ≤ 128.
+    /// uses two `u64`s (lo/hi); bits 63 and 127 are reserved for the
+    /// per-word `INIT_BIT` sentinel in `cache.rs`, so the count must
+    /// stay ≤ 126.
     const FEATURE_COUNT: usize = 73;
-    const _: () = assert!(FEATURE_COUNT <= 128);
+    const _: () = assert!(FEATURE_COUNT <= 126);
 
     #[test]
     fn all_features_roundtrip_name() {
@@ -194,11 +199,21 @@ mod tests {
     }
 
     #[test]
-    fn bit_positions_unique_and_sequential() {
-        let mut seen = [false; FEATURE_COUNT];
+    fn bit_positions_unique_and_avoid_init_slots() {
+        let mut seen = [false; 128];
         for f in Feature::all() {
             let bit = f as u8 as usize;
-            assert!(bit < FEATURE_COUNT, "{} bit={}", f.name(), bit);
+            assert!(bit < 128, "{} bit={} out of range", f.name(), bit);
+            assert!(
+                bit != 63,
+                "{} occupies bit 63 (lo INIT_BIT slot) — pick another",
+                f.name()
+            );
+            assert!(
+                bit != 127,
+                "{} occupies bit 127 (hi INIT_BIT slot) — pick another",
+                f.name()
+            );
             assert!(!seen[bit], "duplicate bit {} ({})", bit, f.name());
             seen[bit] = true;
         }

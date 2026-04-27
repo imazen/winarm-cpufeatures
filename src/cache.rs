@@ -6,8 +6,28 @@
 //! `std::arch::is_aarch64_feature_detected!`, which has its own internal
 //! HWCAP-based cache; layering our own on top would be redundant. On
 //! non-aarch64 targets, every feature reads `false`.
+//!
+//! ## Single-load query path on Windows aarch64
+//!
+//! Init state is encoded *into* the cache words rather than tracked in
+//! a separate atomic — bit 63 of `lo` and bit 63 of `hi` are reserved
+//! as `INIT_BIT`. A query is one Acquire load on the relevant word: if
+//! `INIT_BIT` is clear, run the probe and retry; otherwise mask out
+//! `INIT_BIT` and bit-test. No separate init-gate load.
+//!
+//! Probes store HI first then LO with `INIT_BIT` set. So a reader that
+//! sees `LO & INIT_BIT != 0` is guaranteed HI is also fresh. Snapshot
+//! readers (`Features::current_full`) can use Acquire on LO and Relaxed
+//! on HI as a result.
 
 use crate::features::Feature;
+
+/// Bit reserved in each cache word as the "initialized" sentinel.
+/// `Feature` discriminants must avoid bit 63 (lo) and bit 127 (hi).
+/// See the `bit_positions_unique_and_avoid_init_slots` test in
+/// `features.rs` for the enforcement.
+#[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+const INIT_BIT: u64 = 1 << 63;
 
 /// A snapshot of detected features. Cheap to copy; `has` is a pure bit test.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -31,11 +51,7 @@ impl Features {
     pub fn current() -> Self {
         #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
         {
-            windows_cache::ensure_fast();
-            Self {
-                lo: windows_cache::FAST_LO.load(::core::sync::atomic::Ordering::Relaxed),
-                hi: windows_cache::FAST_HI.load(::core::sync::atomic::Ordering::Relaxed),
-            }
+            windows_cache::snapshot_fast()
         }
         #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
         {
@@ -53,11 +69,7 @@ impl Features {
     pub fn current_full() -> Self {
         #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
         {
-            windows_cache::ensure_full();
-            Self {
-                lo: windows_cache::FULL_LO.load(::core::sync::atomic::Ordering::Relaxed),
-                hi: windows_cache::FULL_HI.load(::core::sync::atomic::Ordering::Relaxed),
-            }
+            windows_cache::snapshot_full()
         }
         #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
         {
@@ -120,14 +132,7 @@ fn snapshot() -> Features {
 pub fn is_detected(feature: Feature) -> bool {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
-        windows_cache::ensure_fast();
-        let bit = feature as u8;
-        if bit < 64 {
-            (windows_cache::FAST_LO.load(::core::sync::atomic::Ordering::Relaxed) >> bit) & 1 != 0
-        } else {
-            (windows_cache::FAST_HI.load(::core::sync::atomic::Ordering::Relaxed) >> (bit - 64)) & 1
-                != 0
-        }
+        windows_cache::query_fast(feature)
     }
     #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
     {
@@ -149,14 +154,7 @@ pub fn is_detected(feature: Feature) -> bool {
 pub fn is_detected_full(feature: Feature) -> bool {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
-        windows_cache::ensure_full();
-        let bit = feature as u8;
-        if bit < 64 {
-            (windows_cache::FULL_LO.load(::core::sync::atomic::Ordering::Relaxed) >> bit) & 1 != 0
-        } else {
-            (windows_cache::FULL_HI.load(::core::sync::atomic::Ordering::Relaxed) >> (bit - 64)) & 1
-                != 0
-        }
+        windows_cache::query_full(feature)
     }
     #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
     {
@@ -253,25 +251,32 @@ pub fn set_registry_enabled(enabled: bool) {
 // Only this target needs a cache: IPFP probes are syscalls, and registry
 // reads are file I/O. Everywhere else we dispatch directly to std's
 // macro, which has its own internal cache.
+//
+// **Single-load query path.** Bit 63 of each `lo`/`hi` cache word is
+// reserved as `INIT_BIT`. A cache word is "initialized" iff `INIT_BIT`
+// is set; a query is one Acquire load that doubles as the init check.
+// Probes write HI first, then LO with `INIT_BIT` set in both — so a
+// reader who sees `INIT_BIT` in LO knows HI is already published. No
+// separate init-gate atomic.
+//
+// `Feature` discriminants must avoid bit 63 of lo (= 63) and bit 63
+// of hi (= 127). Enforced by the `bit_positions_unique_and_avoid_init_slots`
+// test in `features.rs`.
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 mod windows_cache {
-    use super::Features;
-    use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+    use super::{Features, INIT_BIT};
+    use crate::features::Feature;
+    use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-    const INIT_UNSET: u8 = 0;
-    const INIT_DONE: u8 = 2;
-
-    /// Fast cache — IPFP probes only.
-    static FAST_INIT: AtomicU8 = AtomicU8::new(INIT_UNSET);
-    pub(super) static FAST_LO: AtomicU64 = AtomicU64::new(0);
-    pub(super) static FAST_HI: AtomicU64 = AtomicU64::new(0);
+    /// Fast cache — IPFP probes only. Initialized when bit 63 of LO is set.
+    static FAST_LO: AtomicU64 = AtomicU64::new(0);
+    static FAST_HI: AtomicU64 = AtomicU64::new(0);
 
     /// Full cache — IPFP plus, when both the `registry` Cargo feature is
     /// enabled AND `set_registry_enabled(true)` has been called, registry
-    /// CP-key reads.
-    static FULL_INIT: AtomicU8 = AtomicU8::new(INIT_UNSET);
-    pub(super) static FULL_LO: AtomicU64 = AtomicU64::new(0);
-    pub(super) static FULL_HI: AtomicU64 = AtomicU64::new(0);
+    /// CP-key reads. Initialized when bit 63 of LO is set.
+    static FULL_LO: AtomicU64 = AtomicU64::new(0);
+    static FULL_HI: AtomicU64 = AtomicU64::new(0);
 
     /// Runtime opt-out for the registry layer. The `registry` Cargo
     /// feature is the actual gate — it controls whether the registry FFI
@@ -286,35 +291,93 @@ mod windows_cache {
     /// know to call `set_registry_enabled(true)`.
     static REGISTRY_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(true);
 
+    /// Single-load query against the fast cache. Loops only on the cold
+    /// path (cache uninitialized) — the hot path is one Acquire load and
+    /// a bit test.
     #[inline]
-    pub(super) fn ensure_fast() {
-        if FAST_INIT.load(Ordering::Acquire) == INIT_DONE {
-            return;
+    pub(super) fn query_fast(feature: Feature) -> bool {
+        let bit = feature as u8;
+        let (atomic, pos) = if bit < 64 {
+            (&FAST_LO, bit)
+        } else {
+            (&FAST_HI, bit - 64)
+        };
+        loop {
+            let word = atomic.load(Ordering::Acquire);
+            if word & INIT_BIT != 0 {
+                return (word >> pos) & 1 != 0;
+            }
+            populate_fast();
         }
-        let f = probe_fast();
-        FAST_LO.store(f.lo, Ordering::Relaxed);
-        FAST_HI.store(f.hi, Ordering::Relaxed);
-        FAST_INIT.store(INIT_DONE, Ordering::Release);
     }
 
+    /// Single-load query against the full cache.
     #[inline]
-    pub(super) fn ensure_full() {
-        if FULL_INIT.load(Ordering::Acquire) == INIT_DONE {
-            return;
+    pub(super) fn query_full(feature: Feature) -> bool {
+        let bit = feature as u8;
+        let (atomic, pos) = if bit < 64 {
+            (&FULL_LO, bit)
+        } else {
+            (&FULL_HI, bit - 64)
+        };
+        loop {
+            let word = atomic.load(Ordering::Acquire);
+            if word & INIT_BIT != 0 {
+                return (word >> pos) & 1 != 0;
+            }
+            populate_full();
         }
-        let f = probe_full();
-        FULL_LO.store(f.lo, Ordering::Relaxed);
-        FULL_HI.store(f.hi, Ordering::Relaxed);
-        FULL_INIT.store(INIT_DONE, Ordering::Release);
     }
 
-    fn probe_fast() -> Features {
+    /// Take a `Features` snapshot from the fast cache. One Acquire load
+    /// on LO synchronizes; HI is then a Relaxed load (publication of LO
+    /// happens-after publication of HI, so HI is already visible).
+    #[inline]
+    pub(super) fn snapshot_fast() -> Features {
+        loop {
+            let lo = FAST_LO.load(Ordering::Acquire);
+            if lo & INIT_BIT == 0 {
+                populate_fast();
+                continue;
+            }
+            let hi = FAST_HI.load(Ordering::Relaxed);
+            return Features {
+                lo: lo & !INIT_BIT,
+                hi: hi & !INIT_BIT,
+            };
+        }
+    }
+
+    /// Take a `Features` snapshot from the full cache.
+    #[inline]
+    pub(super) fn snapshot_full() -> Features {
+        loop {
+            let lo = FULL_LO.load(Ordering::Acquire);
+            if lo & INIT_BIT == 0 {
+                populate_full();
+                continue;
+            }
+            let hi = FULL_HI.load(Ordering::Relaxed);
+            return Features {
+                lo: lo & !INIT_BIT,
+                hi: hi & !INIT_BIT,
+            };
+        }
+    }
+
+    /// Probe IPFP and publish the result. Stores HI first then LO so a
+    /// reader that sees `INIT_BIT` in LO knows HI is already up-to-date.
+    /// Idempotent — racing writers produce the same bitset, last writer
+    /// wins with the same value.
+    fn populate_fast() {
         let mut f = Features::EMPTY;
         crate::windows::fill_ipfp(&mut f);
-        f
+        FAST_HI.store(f.hi | INIT_BIT, Ordering::Release);
+        FAST_LO.store(f.lo | INIT_BIT, Ordering::Release);
     }
 
-    fn probe_full() -> Features {
+    /// Probe IPFP + (when authorized) registry, then publish.
+    fn populate_full() {
         let mut f = Features::EMPTY;
         crate::windows::fill_ipfp(&mut f);
         // Registry layer is double-opt-in: the `registry` Cargo feature
@@ -324,15 +387,18 @@ mod windows_cache {
         if REGISTRY_RUNTIME_ENABLED.load(Ordering::Acquire) {
             crate::windows::fill_registry(&mut f);
         }
-        f
+        FULL_HI.store(f.hi | INIT_BIT, Ordering::Release);
+        FULL_LO.store(f.lo | INIT_BIT, Ordering::Release);
     }
 
     #[inline]
     pub(super) fn set_registry_enabled(enabled: bool) {
         REGISTRY_RUNTIME_ENABLED.store(enabled, Ordering::Release);
-        // Invalidate the full cache so the next probe re-runs with the new
-        // policy.
-        FULL_INIT.store(INIT_UNSET, Ordering::Release);
+        // Invalidate the full cache by clearing INIT_BIT on both halves.
+        // The next query re-populates with the new policy. Order: clear
+        // LO first (so any concurrent reader sees uninit on LO) then HI.
+        FULL_LO.store(0, Ordering::Release);
+        FULL_HI.store(0, Ordering::Release);
     }
 }
 
