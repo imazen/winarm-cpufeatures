@@ -5,25 +5,53 @@ edition = "2024"
 rust-version = "1.85"
 authors = ["Imazen <support@imazen.io>"]
 license = "MIT OR Apache-2.0"
-description = "Fill the Windows-on-ARM gap in is_aarch64_feature_detected! — detect rdm, fp16, bf16, i8mm, paca/pacg, flagm, dpb, sve, sme, and everything else Microsoft's IsProcessorFeaturePresent won't tell you."
+description = "AArch64 feature detection that fills the Windows-on-ARM gap in std::arch::is_aarch64_feature_detected!. Wires every PF_ARM_* constant from Windows SDK 26100; an opt-in registry decoder covers the ~33 names IPFP can't reach."
 repository = "https://github.com/imazen/winarm-cpufeatures"
+homepage = "https://github.com/imazen/winarm-cpufeatures"
 documentation = "https://docs.rs/winarm-cpufeatures"
 readme = "README.md"
 keywords = ["aarch64", "arm64", "cpu", "windows", "simd"]
-categories = ["hardware-support", "no-std", "os::windows-apis"]
+categories = ["hardware-support", "os::windows-apis"]
+include = [
+    "/src/**/*",
+    "/examples/**/*",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+# Render docs for the Windows ARM64 target so the registry-only items
+# and the Windows dispatch path are both visible on docs.rs.
+default-target = "aarch64-pc-windows-msvc"
+targets = [
+    "aarch64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
 
 [lib]
 
-[target.'cfg(all(target_os = "windows", target_arch = "aarch64"))'.dependencies]
-windows-sys = { version = "0.61.2", features = [
-    "Win32_Foundation",
-    "Win32_System_Registry",
-    "Win32_System_SystemInformation",
-    "Win32_System_Threading",
-] }
+# Zero deps. The handful of Win32 entry points we need are declared
+# inline in `src/windows/sys.rs` — replacing `windows-sys` saves ~3s of
+# clean-build time on Windows aarch64 and keeps this crate trivial to
+# audit.
 
 [features]
 default = []
+# Enable HKLM\…\CentralProcessor\0\CP <hex> registry reads for the ~33
+# stdarch feature names Microsoft has never exposed via IsProcessorFeaturePresent
+# (fhm, fcma, frintts, paca, pacg, bti, dpb/dpb2, mte, mops, dit, sb, ssbs,
+# flagm/flagm2, rand, cssc, wfxt, hbc, sm4, rcpc2/rcpc3, pauth_lr, lse128,
+# tme, ecv, lut, faminmax, fp8*, fpmr). Adds one RegOpenKeyExW + a handful
+# of RegGetValueW calls on first probe; cached after that. Off by default —
+# matches what .NET 10 / pytorch-cpuinfo / Microsoft's own Windows runtime ship.
+registry = []
 # Enable the SVE execution test in `tests/sve_execution.rs`. Requires
 # nightly rustc (for `aarch64_unstable_target_feature`).
 nightly-sve = []

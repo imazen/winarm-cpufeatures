@@ -12,7 +12,7 @@ fn main() {
     let os = std::env::consts::OS;
     println!("# winarm-cpufeatures dump");
     println!("# arch={arch} os={os}");
-    println!("# feature_count={}", winarm_cpufeatures::FEATURE_COUNT);
+    println!("# feature_count={}", Feature::all().count());
     println!();
     let detected_count = Feature::all().filter(|x| f.has(*x)).count();
     println!("# {detected_count} features detected:");

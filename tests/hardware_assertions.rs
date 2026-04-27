@@ -16,7 +16,30 @@
 
 #![cfg(target_arch = "aarch64")]
 
-use winarm_cpufeatures::detected_full;
+use winarm_cpufeatures::{Feature, Features, set_registry_enabled};
+
+/// Authorise the registry detection layer once per test process.
+///
+/// Without this, the `registry` Cargo feature is compiled in but the
+/// runtime gate stays off — and `Features::current_full()` returns
+/// IPFP-only answers, causing every registry-only feature (sm4, paca,
+/// dpb*, flagm*, dit, sb, ssbs, rand, …) to read `false`. Each ignored
+/// hardware test calls this at entry. Idempotent; uses `Once` to avoid
+/// repeated cache invalidation under parallel execution.
+fn setup() -> Features {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| set_registry_enabled(true));
+    Features::current_full()
+}
+
+/// Look up a feature by stdarch name. Panics on unknown names so a typo
+/// in the expected-list arrays surfaces immediately.
+fn lookup(name: &str) -> Feature {
+    Feature::all()
+        .find(|f| f.name() == name)
+        .unwrap_or_else(|| panic!("unhandled feature in hardware_assertions: {name}"))
+}
 
 /// Neoverse N2 (Armv9.0-A) as shipped in Azure Cobalt 100, Graviton 3, and
 /// GitHub's `windows-11-arm` / `ubuntu-24.04-arm` hosted runners.
@@ -26,6 +49,7 @@ use winarm_cpufeatures::detected_full;
 #[test]
 #[ignore = "requires Neoverse N2 / Cobalt 100 — `cargo test --ignored neoverse_n2`"]
 fn neoverse_n2() {
+    let cpu = setup();
     // ── Must be present ─────────────────────────────────────────────────
     for f in [
         "asimd",
@@ -56,13 +80,13 @@ fn neoverse_n2() {
         "flagm",
         "sve",
         "sve2",
-        "sve2_bitperm",
-        "sve2_sha3",
-        "sve2_sm4",
+        "sve2-bitperm",
+        "sve2-sha3",
+        "sve2-sm4",
     ] {
         assert!(
-            dispatch(f),
-            "Neoverse N2 must have feature `{f}` but detected_full said no"
+            cpu.has(lookup(f)),
+            "Neoverse N2 must have feature `{f}` but Features::current_full said no"
         );
     }
 
@@ -70,8 +94,8 @@ fn neoverse_n2() {
     // N2 deliberately does not implement these; if we claim them, something
     // in the detection path is false-positive.
     for f in [
-        "sve2_aes",
-        "sve_b16b16",
+        "sve2-aes",
+        "sve-b16b16",
         "f32mm",
         "f64mm",
         "sme",
@@ -83,8 +107,8 @@ fn neoverse_n2() {
         "rand",
     ] {
         assert!(
-            !dispatch(f),
-            "Neoverse N2 must NOT have feature `{f}` but detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Neoverse N2 must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
@@ -95,6 +119,7 @@ fn neoverse_n2() {
 #[test]
 #[ignore = "requires Neoverse V2 — `cargo test --ignored neoverse_v2`"]
 fn neoverse_v2() {
+    let cpu = setup();
     // Superset of N2's positives, plus:
     for f in [
         "asimd",
@@ -124,23 +149,23 @@ fn neoverse_v2() {
         "flagm",
         "sve",
         "sve2",
-        "sve2_bitperm",
-        "sve2_sha3",
-        "sve2_sm4",
+        "sve2-bitperm",
+        "sve2-sha3",
+        "sve2-sm4",
         // V2-only additions:
-        "sve2_aes",
+        "sve2-aes",
     ] {
         assert!(
-            dispatch(f),
-            "Neoverse V2 must have feature `{f}` but detected_full said no"
+            cpu.has(lookup(f)),
+            "Neoverse V2 must have feature `{f}` but Features::current_full said no"
         );
     }
 
     // Still no SME on V2 (that's V3+).
     for f in ["sme", "sme2", "sme2p1", "mte"] {
         assert!(
-            !dispatch(f),
-            "Neoverse V2 must NOT have feature `{f}` but detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Neoverse V2 must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
@@ -154,77 +179,66 @@ fn neoverse_v2() {
 #[test]
 #[ignore = "requires Snapdragon X (Oryon) — `cargo test --ignored snapdragon_x`"]
 fn snapdragon_x() {
+    let cpu = setup();
+    // FEAT_MOPS and FEAT_WFxT are optional in ARMv8.7 (only mandated at v8.8);
+    // Oryon does not implement them — verified on a Yoga Slim 7x (X1E, MIDR
+    // impl=0x51 var=0x2 part=0x001) where ID_AA64ISAR2_EL1 reports MOPS=0,
+    // WFxT=0 and `/proc/cpuinfo` lists neither.
     for f in [
         "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4", "lse", "lse2", "rcpc",
         "rcpc2", "rdm", "dotprod", "jsconv", "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
-        "paca", "pacg", "dpb", "dpb2", "flagm", "flagm2", "mops", "wfxt", "rand",
+        "paca", "pacg", "dpb", "dpb2", "flagm", "flagm2", "rand", "sb", "ssbs",
     ] {
         assert!(
-            dispatch(f),
-            "Snapdragon X (Oryon) must have feature `{f}` but detected_full said no"
+            cpu.has(lookup(f)),
+            "Snapdragon X (Oryon) must have feature `{f}` but Features::current_full said no"
         );
     }
 
     // Oryon explicitly omits SVE and MTE.
     for f in ["sve", "sve2", "sme", "mte"] {
         assert!(
-            !dispatch(f),
-            "Snapdragon X (Oryon) must NOT have feature `{f}` but detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Snapdragon X (Oryon) must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
 
-/// detected_full! takes a literal, but these tests iterate over `&str`. Route
-/// each name through a match so the macro sees a literal at each site.
-fn dispatch(name: &str) -> bool {
-    match name {
-        "asimd" => detected_full!("asimd"),
-        "fp" => detected_full!("fp"),
-        "fp16" => detected_full!("fp16"),
-        "fhm" => detected_full!("fhm"),
-        "fcma" => detected_full!("fcma"),
-        "bf16" => detected_full!("bf16"),
-        "i8mm" => detected_full!("i8mm"),
-        "jsconv" => detected_full!("jsconv"),
-        "frintts" => detected_full!("frintts"),
-        "rdm" => detected_full!("rdm"),
-        "dotprod" => detected_full!("dotprod"),
-        "aes" => detected_full!("aes"),
-        "pmull" => detected_full!("pmull"),
-        "sha2" => detected_full!("sha2"),
-        "sha3" => detected_full!("sha3"),
-        "sm4" => detected_full!("sm4"),
-        "crc" => detected_full!("crc"),
-        "lse" => detected_full!("lse"),
-        "lse2" => detected_full!("lse2"),
-        "lse128" => detected_full!("lse128"),
-        "rcpc" => detected_full!("rcpc"),
-        "rcpc2" => detected_full!("rcpc2"),
-        "rcpc3" => detected_full!("rcpc3"),
-        "paca" => detected_full!("paca"),
-        "pacg" => detected_full!("pacg"),
-        "bti" => detected_full!("bti"),
-        "dpb" => detected_full!("dpb"),
-        "dpb2" => detected_full!("dpb2"),
-        "mte" => detected_full!("mte"),
-        "mops" => detected_full!("mops"),
-        "flagm" => detected_full!("flagm"),
-        "flagm2" => detected_full!("flagm2"),
-        "rand" => detected_full!("rand"),
-        "wfxt" => detected_full!("wfxt"),
-        "sve" => detected_full!("sve"),
-        "sve2" => detected_full!("sve2"),
-        "sve2p1" => detected_full!("sve2p1"),
-        "sve2_aes" => detected_full!("sve2_aes"),
-        "sve2_bitperm" => detected_full!("sve2_bitperm"),
-        "sve2_sha3" => detected_full!("sve2_sha3"),
-        "sve2_sm4" => detected_full!("sve2_sm4"),
-        "sve_b16b16" => detected_full!("sve_b16b16"),
-        "f32mm" => detected_full!("f32mm"),
-        "f64mm" => detected_full!("f64mm"),
-        "sme" => detected_full!("sme"),
-        "sme2" => detected_full!("sme2"),
-        "sme2p1" => detected_full!("sme2p1"),
-        other => panic!("unhandled feature in hardware_assertions dispatch: {other}"),
+/// Qualcomm SC8280XP (8cx Gen 3 / Nuvia Phoenix, ARMv8.4-A) as found in
+/// Lenovo ThinkPad X13s and dev kits running Linux (WSL2 or native).
+///
+/// Implements a rich AdvSIMD + crypto feature set but no SVE/SME. Notable:
+/// has flagm2, frint, sha512 (per /proc/cpuinfo) but Rust stdarch only exposes
+/// flagm2/frintts/sb/ssbs on nightly — so those are nightly-only assertions.
+///
+/// Feature expectations derived from /proc/cpuinfo on WSL2:
+///   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid
+///   asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 asimdfhm
+///   uscat ilrcpc flagm ssbs sb paca pacg dcpodp flagm2 frint i8mm bf16
+///   rng afp rpres
+#[test]
+#[ignore = "requires Qualcomm SC8280XP — `cargo test --ignored sc8280xp`"]
+fn sc8280xp() {
+    let cpu = setup();
+    // ── Must be present (stable stdarch names) ──────────────────────────
+    for f in [
+        "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4", "lse", "lse2", "rcpc",
+        "rcpc2", "rdm", "dotprod", "jsconv", "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
+        "paca", "pacg", "dpb", "dpb2", "flagm", "rand", "sb", "ssbs",
+    ] {
+        assert!(
+            cpu.has(lookup(f)),
+            "SC8280XP must have feature `{f}` but Features::current_full said no"
+        );
+    }
+
+    // ── Must be absent ──────────────────────────────────────────────────
+    for f in [
+        "sve", "sve2", "sme", "sme2", "mte", "bti", "lse128", "rcpc3", "mops", "wfxt",
+    ] {
+        assert!(
+            !cpu.has(lookup(f)),
+            "SC8280XP must NOT have feature `{f}` but Features::current_full said yes"
+        );
     }
 }

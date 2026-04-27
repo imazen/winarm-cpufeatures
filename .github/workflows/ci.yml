@@ -42,10 +42,13 @@ jobs:
       # The Neoverse N2 assertion test is `#[ignore]` by default but the
       # GH `windows-11-arm` and `ubuntu-24.04-arm` runners both ARE Neoverse
       # N2 / Cobalt 100, so we run it explicitly here. Failure means our
-      # detection regressed against the known hardware feature set.
+      # detection regressed against the known hardware feature set. Needs
+      # `--features registry` because several N2 features (sm4, paca, pacg,
+      # dpb, dpb2, fhm, fcma, frintts) are Registry-classified — IPFP can't
+      # see them.
       - name: Neoverse N2 hardware assertions
         if: matrix.os == 'windows-11-arm' || matrix.os == 'ubuntu-24.04-arm'
-        run: cargo test --test hardware_assertions -- --ignored neoverse_n2 --nocapture
+        run: cargo test --features registry --test hardware_assertions -- --ignored neoverse_n2 --nocapture
 
       - name: Dump features
         shell: bash
@@ -57,6 +60,45 @@ jobs:
         with:
           name: feature-dump-${{ matrix.os }}
           path: feature-dump.txt
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Consumer-crate macro-hygiene check. `contrib/compile-bench/` is a
+  # literal workspace-detached crate that depends on winarm-cpufeatures
+  # via a path dependency and invokes both macros from a fully external
+  # compilation unit. Stricter than `tests/*.rs` integration tests
+  # (those still share the workspace) — catches `$crate` resolution
+  # bugs and visibility quirks that only surface from a true outside
+  # consumer.
+  #
+  # Runs on every aarch64 target so each `#[cfg]`-gated macro
+  # definition gets exercised through real consumer-crate macro
+  # expansion.
+  # ────────────────────────────────────────────────────────────────────────
+  consumer-crate:
+    name: Consumer-crate hygiene (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-11-arm,    name: Windows ARM64 }
+          - { os: ubuntu-24.04-arm,  name: Linux ARM64 }
+          - { os: macos-14,          name: macOS ARM64 }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contrib/compile-bench
+      - name: Build consumer crate
+        working-directory: contrib/compile-bench
+        run: cargo build
+      - name: Run winarm bin
+        working-directory: contrib/compile-bench
+        run: cargo run --bin winarm
+      - name: Run stdlib bin
+        working-directory: contrib/compile-bench
+        run: cargo run --bin stdlib
 
   # ────────────────────────────────────────────────────────────────────────
   # Non-aarch64 targets — confirm the crate compiles and tests pass on
@@ -80,18 +122,15 @@ jobs:
   # Cross-compile sanity — confirm the crate builds for the targets archmage
   # cares about, even if we can't run on them here.
   # ────────────────────────────────────────────────────────────────────────
-  cross:
+  cross-build:
     name: Cross-build (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         target:
-          - i686-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
           - aarch64-pc-windows-msvc
           - aarch64-apple-darwin
-          - armv7-unknown-linux-gnueabihf
           - wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v6
@@ -100,6 +139,58 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --target ${{ matrix.target }}
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Cross-arch testing under QEMU. Real test execution on i686 + armv7
+  # exercises the non-aarch64 stub (returns false for every name). The
+  # aarch64-linux entry is redundant with native ubuntu-24.04-arm but
+  # confirms cross-toolchain parity. Catches issues that `cargo build
+  # --target` doesn't — e.g. cfg-gated test code that compiles but
+  # mis-asserts at runtime.
+  # ────────────────────────────────────────────────────────────────────────
+  cross-test:
+    name: Cross-test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/install-action@cross
+      - uses: Swatinem/rust-cache@v2
+      - name: Test default features
+        run: cross test --target ${{ matrix.target }}
+      - name: Test --features registry
+        run: cross test --features registry --target ${{ matrix.target }}
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Feature-flag combinations. Catches dead-code / missing-cfg-gate bugs
+  # that only surface when a specific feature subset is selected. One
+  # Linux-x64 runner is enough; native ARM coverage stays in test-aarch64.
+  # ────────────────────────────────────────────────────────────────────────
+  feature-combos:
+    name: Features (${{ matrix.combo.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - { name: "no-default", args: "--no-default-features" }
+          - { name: "default",    args: "" }
+          - { name: "registry",   args: "--features registry" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build ${{ matrix.combo.args }}
+      - run: cargo test ${{ matrix.combo.args }}
+      - run: cargo clippy --all-targets ${{ matrix.combo.args }} -- -D warnings
 
   # ────────────────────────────────────────────────────────────────────────
   # MSRV — every supported platform.

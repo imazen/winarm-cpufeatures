@@ -1,10 +1,17 @@
-# winarm-cpufeatures ![CI](https://img.shields.io/github/actions/workflow/status/imazen/winarm-cpufeatures/ci.yml?style=flat-square&label=CI) ![crates.io](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square) [![lib.rs](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/winarm-cpufeatures) ![docs.rs](https://img.shields.io/docsrs/winarm-cpufeatures?style=flat-square) ![license](https://img.shields.io/crates/l/winarm-cpufeatures?style=flat-square)
+# winarm-cpufeatures
+
+[![CI](https://img.shields.io/github/actions/workflow/status/imazen/winarm-cpufeatures/ci.yml?style=flat-square&label=CI)](https://github.com/imazen/winarm-cpufeatures/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square)](https://crates.io/crates/winarm-cpufeatures)
+[![lib.rs](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/winarm-cpufeatures)
+[![docs.rs](https://img.shields.io/docsrs/winarm-cpufeatures?style=flat-square)](https://docs.rs/winarm-cpufeatures)
+![license](https://img.shields.io/crates/l/winarm-cpufeatures?style=flat-square)
+![MSRV](https://img.shields.io/badge/MSRV-1.85-blue?style=flat-square)
 
 AArch64 CPU feature detection that fills the Windows-on-ARM gap in `std::arch::is_aarch64_feature_detected!`.
 
-## The problem
+## The gap
 
-Rust's `is_aarch64_feature_detected!` on Windows ARM64 is a thin wrapper around `IsProcessorFeaturePresent`. Microsoft only exposes ~17 `PF_ARM_*` constants, so on **1.85**, the Windows backend probes exactly 10 features out of the 73 the macro accepts. On Windows-on-ARM Neoverse N2 hardware (same silicon as Linux ARM CI runners), these all report `false` despite being physically present:
+On Windows aarch64, std's `is_aarch64_feature_detected!` is a thin wrapper around `IsProcessorFeaturePresent`. As of stable Rust 1.85 it only wires ~10 features. On Windows ARM hardware these all report `false` despite being physically present:
 
 ```
 rdm, fp16, fhm, fcma, bf16, i8mm, frintts, sha3, sha512, sm4,
@@ -13,28 +20,40 @@ sve, sve2, sve2-aes, sve2-bitperm, sve2-sha3, sve2-sm4, sve2p1,
 sve-b16b16, sme, sme2, sme2p1, ...
 ```
 
+[rust-lang/rust#155856](https://github.com/rust-lang/rust/pull/155856) closes 8 of those. The remaining ~25 (the registry-decoded ones — `paca`, `bti`, `dpb`, `flagm`, `mte`, `mops`, the FP8 family, etc.) are why this crate exists.
+
 ## What this crate does
 
-Ships a drop-in `detected!` macro that returns the correct answer on Windows. Detection strategy:
+- **On Windows aarch64**: detects all 73 stdarch feature names, including the 32 std flags as nightly-only, on **stable Rust** without any feature gate. Probes every `PF_ARM_*` constant in Windows SDK 26100, derives RDM via the same DP/LSE inference .NET 10 uses, and (with `--features registry`) decodes the `HKLM\…\CentralProcessor\0\CP <hex>` `ID_AA64*_EL1` snapshots Windows publishes — same undocumented-but-stable approach LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime use.
+- **On non-Windows aarch64**: macros are a pure passthrough to `std::arch::is_aarch64_feature_detected!`. Std handles those targets correctly already; we add nothing. Stable feature names work; the 32 unstable names need the user's own nightly + `#![feature(stdarch_aarch64_feature_detection)]`, same as if you used std directly.
+- **On non-aarch64**: every documented name returns `false`. Lets cross-platform code use one spelling.
 
-1. **`IsProcessorFeaturePresent`** using all `PF_ARM_*` constants through SDK 26100 — covers the ~30 features Microsoft does expose (including the SVE/SME family added in Windows 11 24H2).
-2. **Registry `CP <hex>` parsing** — reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP 4030` etc., which are cached AArch64 ID register snapshots (`ID_AA64ISAR0/1/2_EL1`, `ID_AA64PFR0/1_EL1`, `ID_AA64MMFR0/1/2/3_EL1`). Same undocumented-but-stable approach used by LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime.
-3. **Platform baseline override** for `rdm` — Windows 11 on ARM mandates ARMv8.1-A, which guarantees FEAT_RDM.
+## Install
 
-On non-Windows platforms, `detected!` delegates directly to `std::arch::is_aarch64_feature_detected!` — no added logic, no overhead.
+```sh
+cargo add winarm-cpufeatures                       # IPFP-only path
+cargo add winarm-cpufeatures --features registry   # IPFP + registry decoder
+```
 
-## Usage
+Documentation: [docs.rs/winarm-cpufeatures](https://docs.rs/winarm-cpufeatures).
+
+## Drop-in for std
+
+Same name, same dashed feature spelling (`sve2-aes`, `sme-fa64`, `pauth-lr`, …), same call shape:
+
+```diff
+-use std::arch::is_aarch64_feature_detected;
++use winarm_cpufeatures::is_aarch64_feature_detected_fast;
+```
+
+Every existing call site stays unchanged.
 
 ```rust
-use winarm_cpufeatures::detected;
+use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 
-if detected!("rdm") {
-    // safe to use vqrdmlahq_s16 etc.
-}
-
-if detected!("bf16") {
-    // safe to use bfdot
-}
+if is_aarch64_feature_detected_fast!("rdm") { /* vqrdmlahq_s16 etc. */ }
+if is_aarch64_feature_detected_fast!("bf16") { /* bfdot */ }
+if is_aarch64_feature_detected_fast!("sve")  { /* SVE kernel */ }
 ```
 
 Or the struct-style API for batched checks:
@@ -48,10 +67,61 @@ if f.has(Feature::Bf16) && f.has(Feature::I8mm) {
 }
 ```
 
+## Two query paths
+
+| API | What it reads on Windows aarch64 |
+|---|---|
+| `is_aarch64_feature_detected_fast!` | IPFP-only cache. Names IPFP can't see (`paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`, `fcma`, `frintts`, `sm4`, …) silently return `false`, matching std's behavior. |
+| `Features::current_full()` | IPFP + registry cache (when `--features registry` is on). Covers the ~25 names IPFP can't reach. One snapshot, then any number of bit tests via `.has(Feature::*)`. |
+
+On non-Windows aarch64 and non-aarch64, `Features::current_full()` is identical to `Features::current()` (no registry layer).
+
+## Cargo features
+
+- `registry` — links the `HKLM\…\CentralProcessor\0\CP <hex>` registry decoder. Off by default. When enabled, the registry path is consulted automatically; sandboxed processes can opt out with `set_registry_enabled(false)`.
+- `nightly-sve` — enables `tests/sve_execution.rs` (verifies SVE detection against actually executing an SVE instruction). Test-only; requires nightly rustc.
+
+## Compile-time cost
+
+Calling our macro is the same cost as calling std's. Measured at 0.16s for 480 invocations on aarch64-pc-windows-msvc — identical to `std::arch::is_aarch64_feature_detected!` within noise. See `contrib/compile-bench/`.
+
 ## MSRV
 
-Rust 1.85.
+Rust 1.85. Bumping MSRV is a minor-version change.
+
+## Versioning & stability
+
+Semantic versioning. The public API is the macro, the `Features` /
+`Feature` types, and `set_registry_enabled`. Private items (`is_detected`,
+the macro arms, the `cache` module internals) are `#[doc(hidden)]` and
+may change in any release.
+
+The registry decoder reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`,
+the same undocumented-but-stable AArch64 ID-register snapshot LLVM,
+pytorch/cpuinfo, ONNX Runtime, and Microsoft itself rely on. If
+Microsoft ever changes the layout, we'll cut a patch release; until
+then it's been the canonical Windows-ARM feature source for a decade.
+
+## Comparison to other crates
+
+- [`cpufeatures`](https://crates.io/crates/cpufeatures) (RustCrypto) is
+  the widely-used cross-platform feature detector but explicitly punts
+  on Windows-ARM and only exposes `aes`/`sha2`/`sha3` on aarch64. Use
+  both crates side-by-side: `cpufeatures` for x86 + Linux/macOS aarch64,
+  this crate for Windows-on-ARM.
+- [`aarch64-cpu`](https://crates.io/crates/aarch64-cpu) is a bare-metal
+  register-access crate for kernel/embedded code. Different domain.
+
+## Contributing
+
+Bug reports and PRs welcome — please file at
+[github.com/imazen/winarm-cpufeatures](https://github.com/imazen/winarm-cpufeatures).
+If you have access to AArch64 hardware not yet covered by
+`tests/hardware_assertions.rs` (especially Apple silicon, fresh
+Snapdragon X variants, or future SME-capable parts), contributing a
+known-feature-set assertion is the highest-leverage way to harden
+detection.
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0.
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE).

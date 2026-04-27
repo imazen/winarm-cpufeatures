@@ -24,9 +24,9 @@
 //! | `CP 403A`   | ID_AA64MMFR2_EL1      | memory model features               |
 //! | `CP 403B`   | ID_AA64MMFR3_EL1      | memory model features               |
 
-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
-use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_QWORD, RegCloseKey, RegGetValueW, RegOpenKeyExW,
+use super::sys::{
+    ERROR_SUCCESS, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_QWORD, RegCloseKey, RegGetValueW,
+    RegOpenKeyExW,
 };
 
 use crate::cache::Features;
@@ -37,6 +37,14 @@ const CPU0_SUBKEY: &str = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0";
 /// Raw AArch64 ID register snapshot read from the registry. Values are `None`
 /// when the corresponding `CP <hex>` entry is absent or wrong-typed, which
 /// happens on older Windows builds.
+///
+/// Some fields aren't currently consulted by the decoder (midr_el1 is
+/// vendor-id only; mmfr0/1/3 carry no stdarch-relevant feature bits today)
+/// but are read up-front so adding decoders in future is a one-line change.
+#[allow(
+    dead_code,
+    reason = "fields populated for future decoder expansion / diagnostics"
+)]
 #[derive(Default, Debug, Copy, Clone)]
 pub struct IdRegisters {
     pub midr_el1: Option<u64>,
@@ -58,17 +66,18 @@ impl IdRegisters {
         let Some(hk) = open_cpu0() else {
             return Self::default();
         };
-        let mut r = Self::default();
-        r.midr_el1 = read_qword(hk, "CP 4000");
-        r.aa64pfr0 = read_qword(hk, "CP 4020");
-        r.aa64pfr1 = read_qword(hk, "CP 4021");
-        r.aa64isar0 = read_qword(hk, "CP 4030");
-        r.aa64isar1 = read_qword(hk, "CP 4031");
-        r.aa64isar2 = read_qword(hk, "CP 4032");
-        r.aa64mmfr0 = read_qword(hk, "CP 4038");
-        r.aa64mmfr1 = read_qword(hk, "CP 4039");
-        r.aa64mmfr2 = read_qword(hk, "CP 403A");
-        r.aa64mmfr3 = read_qword(hk, "CP 403B");
+        let r = Self {
+            midr_el1: read_qword(hk, "CP 4000"),
+            aa64pfr0: read_qword(hk, "CP 4020"),
+            aa64pfr1: read_qword(hk, "CP 4021"),
+            aa64isar0: read_qword(hk, "CP 4030"),
+            aa64isar1: read_qword(hk, "CP 4031"),
+            aa64isar2: read_qword(hk, "CP 4032"),
+            aa64mmfr0: read_qword(hk, "CP 4038"),
+            aa64mmfr1: read_qword(hk, "CP 4039"),
+            aa64mmfr2: read_qword(hk, "CP 403A"),
+            aa64mmfr3: read_qword(hk, "CP 403B"),
+        };
         close(hk);
         r
     }
