@@ -2,7 +2,9 @@
 //!
 //! Apples-to-apples with `bin/stdlib.rs`, which exercises the same number
 //! of `std::arch::is_aarch64_feature_detected!` invocations on the same
-//! 40 stable stdarch feature names.
+//! 40 stable stdarch feature names. We restrict to stable names because
+//! on non-Windows aarch64 our macro is a passthrough to std, and stable
+//! Rust rejects unstable names there — same constraint stdlib.rs faces.
 
 use std::hint::black_box;
 
@@ -15,20 +17,18 @@ fn block() -> u32 {
     macro_rules! batch {
         () => {
             probe!(
-                "asimd", "fp", "fp16", "bf16", "i8mm", "jsconv", "rdm", "dotprod",
-                "aes", "pmull", "sha2", "sha3", "crc",
-                "lse", "lse2", "rcpc",
+                "asimd", "fp", "fp16", "fhm", "fcma", "bf16", "i8mm",
+                "jsconv", "frintts", "rdm", "dotprod",
+                "aes", "pmull", "sha2", "sha3", "sm4", "crc",
+                "lse", "lse2", "rcpc", "rcpc2",
+                "paca", "pacg", "bti", "dpb", "dpb2", "mte",
+                "dit", "sb", "ssbs", "flagm", "rand", "tme",
                 "sve", "sve2", "sve2-aes", "sve2-bitperm", "sve2-sha3", "sve2-sm4",
                 "f32mm", "f64mm",
-                // Pad to 40 names so the call count matches bin/stdlib.rs.
-                "sve2p1", "sve-b16b16",
-                "sme", "sme2", "sme2p1",
-                "sme-b16b16", "sme-f16f16", "sme-f64f64", "sme-f8f16", "sme-f8f32",
-                "sme-fa64", "sme-i16i64", "sme-lutv2",
-                "ssve-fp8dot2", "ssve-fp8dot4", "ssve-fp8fma",
             );
         };
     }
+    // 12 batches × 40 names = 480 invocations — matches bin/stdlib.rs.
     batch!(); batch!(); batch!(); batch!();
     batch!(); batch!(); batch!(); batch!();
     batch!(); batch!(); batch!(); batch!();

@@ -125,7 +125,13 @@ macro_rules! for_every_unstable_name_when_supported {
 /// Same shape as [`for_every_supported_name`] but only the 41 names that
 /// `std::arch::is_aarch64_feature_detected!` accepts on stable Rust
 /// 1.85. Used for tests that compare against std's macro directly —
-/// the unstable-on-stable names would error on stable rustc.
+/// the unstable-on-stable names would error on stable rustc. Only
+/// referenced from the Windows-aarch64 superset test, so unused
+/// elsewhere.
+#[cfg_attr(
+    not(all(target_os = "windows", target_arch = "aarch64")),
+    allow(unused_macros)
+)]
 macro_rules! for_every_stable_std_name {
     ($cb:ident) => {
         $cb!("asimd");

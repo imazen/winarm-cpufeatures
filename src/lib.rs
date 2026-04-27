@@ -381,29 +381,35 @@ macro_rules! is_aarch64_feature_detected_fast {
     };
 }
 
+/// Drop-in single-feature check (non-Windows aarch64 cfg).
+///
+/// On Linux/macOS aarch64 this expands directly to
+/// `std::arch::is_aarch64_feature_detected!($name)`. Std handles those
+/// targets correctly via HWCAP / sysctl, so this crate adds nothing.
+///
+/// Unstable feature names (`sme`, `cssc`, `sve2p1`, `pauth-lr`, …)
+/// require nightly + the user's own
+/// `#![feature(stdarch_aarch64_feature_detection)]` gate — same as
+/// calling std directly. On Linux/macOS aarch64 use [`Features::current`]
+/// for those names so the unstable gate stays inside this crate.
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_fast {
-    // Pure passthrough. Std validates names and dispatches via HWCAP.
-    // Unstable feature names (`sme`, `cssc`, `sve2p1`, `pauth-lr`, …)
-    // require nightly + the user's own
-    // `#![feature(stdarch_aarch64_feature_detection)]` gate — same as
-    // calling std directly. We don't try to mask that on non-Windows
-    // aarch64 because std handles those targets correctly already;
-    // this crate exists for the Windows-aarch64 gap.
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)
     };
 }
 
+/// Drop-in single-feature check (non-aarch64 cfg).
+///
+/// On non-aarch64 targets, accepts any string literal and returns
+/// `false`. Std's `is_aarch64_feature_detected!` doesn't compile on
+/// non-aarch64, so we can't passthrough to validate; we accept any
+/// future name silently rather than block cross-platform code on a
+/// crate update. Cross-platform CI on aarch64 catches typos there.
 #[cfg(not(target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_fast {
-    // Single-arm: every documented name returns false on non-aarch64.
-    // No std passthrough here (std::arch::is_aarch64_feature_detected!
-    // doesn't compile on non-aarch64), so we accept any string literal
-    // and return false. Cross-platform CI on aarch64 targets catches
-    // typos via std validation.
     ($name:literal) => {{
         const _: &str = $name;
         false

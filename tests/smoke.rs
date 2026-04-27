@@ -9,6 +9,8 @@ use winarm_cpufeatures::{Feature, Features, is_aarch64_feature_detected_fast};
 #[test]
 fn fast_macro_compiles_for_ipfp_features() {
     // All these features have DetectionMethod::Ipfp; the fast macro accepts them.
+    // Names limited to the 41 stable stdarch names so the test compiles on
+    // non-Windows aarch64 stable Rust (where the macro is a passthrough to std).
     let _ = is_aarch64_feature_detected_fast!("asimd");
     let _ = is_aarch64_feature_detected_fast!("fp");
     let _ = is_aarch64_feature_detected_fast!("aes");
@@ -19,7 +21,28 @@ fn fast_macro_compiles_for_ipfp_features() {
     let _ = is_aarch64_feature_detected_fast!("rcpc");
     let _ = is_aarch64_feature_detected_fast!("sve");
     let _ = is_aarch64_feature_detected_fast!("sve2");
+}
+
+/// Unstable-on-stable-Rust names compile through the macro on Windows
+/// aarch64 (cache-based dispatch) and on non-aarch64 (always-`false`
+/// stub). On non-Windows aarch64 the macro is a pure passthrough to
+/// std, which gates these behind nightly + a feature flag — skip there.
+#[cfg(any(
+    all(target_arch = "aarch64", target_os = "windows"),
+    not(target_arch = "aarch64"),
+))]
+#[test]
+fn fast_macro_compiles_for_unstable_names() {
     let _ = is_aarch64_feature_detected_fast!("sve2p1");
+    let _ = is_aarch64_feature_detected_fast!("sve-b16b16");
+    let _ = is_aarch64_feature_detected_fast!("sme");
+    let _ = is_aarch64_feature_detected_fast!("sme2");
+    let _ = is_aarch64_feature_detected_fast!("sme-fa64");
+    let _ = is_aarch64_feature_detected_fast!("flagm2");
+    let _ = is_aarch64_feature_detected_fast!("mops");
+    let _ = is_aarch64_feature_detected_fast!("pauth-lr");
+    let _ = is_aarch64_feature_detected_fast!("lse128");
+    let _ = is_aarch64_feature_detected_fast!("rcpc3");
 }
 
 #[test]
