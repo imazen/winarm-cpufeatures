@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — 2026-04-27
+
+### Added
+
+- `is_aarch64_feature_detected_full!` macro and `is_detected_full(Feature)`
+  helper. Same call shape as `_fast`, but on Windows ARM64 with the
+  `registry` Cargo feature enabled it consults the registry-decoded
+  `ID_AA64*_EL1` layer in addition to IPFP — making the ~30 features
+  `IsProcessorFeaturePresent` doesn't expose (`fhm`, `fcma`, `frintts`,
+  `sm4`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `flagm`/`flagm2`, `mte`, the
+  SVE2 variants, SME, FP8, …) actually observable.
+- `windows_cache::query_full(feature) -> bool` — single-load Acquire path
+  against the full cache, mirroring `query_fast`. Powers `is_detected_full`.
+
+### Why
+
+`_fast` was IPFP-only by design (the registry layer only fed
+`Features::current_full()` snapshots), so single-feature callers reaching
+for the macro form silently got back `false` for every registry-classified
+name even with `features = ["registry"]` and `set_registry_enabled(true)`.
+Downstream consumers like archmage need a per-name macro that actually
+hits the registry — that is what `_full` is. `_fast` is preserved
+unchanged for callers that explicitly want the IPFP-only fast path.
+
 ## [0.1.0] — 2026-04-27
 
 Initial release.

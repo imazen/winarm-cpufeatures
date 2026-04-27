@@ -103,7 +103,7 @@ mod features;
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 mod windows;
 
-pub use cache::{Features, is_detected, set_registry_enabled};
+pub use cache::{Features, is_detected, is_detected_full, set_registry_enabled};
 pub use features::Feature;
 
 // ─── Macro dispatch — per-target ─────────────────────────────────────────
@@ -381,6 +381,267 @@ macro_rules! is_aarch64_feature_detected_fast {
     };
 }
 
+/// Drop-in single-feature check that consults the **full** detection
+/// path, including the registry-decoded `ID_AA64*_EL1` layer when the
+/// `registry` Cargo feature is on.
+///
+/// **On Windows ARM64 with `registry`** — Returns the union of IPFP and
+/// registry detection. Names IPFP cannot reach (`paca`, `bti`, `dpb`,
+/// `flagm`, `mte`, `fhm`, `fcma`, `frintts`, `sm4`, the SVE2 variants,
+/// SME, FP8, …) all become observable. First call probes IPFP and (if
+/// authorized via `set_registry_enabled`, default `true`) parses the
+/// registry; subsequent calls are one Acquire load + bit test against
+/// the cached snapshot. Use this — not `_fast` — when you want every
+/// feature this crate can see.
+///
+/// **On Windows ARM64 without `registry`** — Equivalent to `_fast`
+/// (registry FFI isn't linked). Same names report `false` as in `_fast`.
+///
+/// **On non-Windows aarch64** — Identical to `_fast`: expands to
+/// `std::arch::is_aarch64_feature_detected!($name)`. Std handles those
+/// targets correctly via HWCAP / sysctl.
+///
+/// **On non-aarch64** — Identical to `_fast`: accepts any string literal
+/// and returns `false`.
+///
+/// ```no_run
+/// if winarm_cpufeatures::is_aarch64_feature_detected_full!("sve2-aes") {
+///     // SVE2-AES — Microsoft has no PF_* constant for this; only
+///     // visible via the registry layer on Windows ARM64.
+/// }
+/// ```
+#[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected_full {
+    ("asimd") => {
+        $crate::is_detected_full($crate::Feature::Asimd)
+    };
+    ("fp") => {
+        $crate::is_detected_full($crate::Feature::Fp)
+    };
+    ("fp16") => {
+        $crate::is_detected_full($crate::Feature::Fp16)
+    };
+    ("fhm") => {
+        $crate::is_detected_full($crate::Feature::Fhm)
+    };
+    ("fcma") => {
+        $crate::is_detected_full($crate::Feature::Fcma)
+    };
+    ("bf16") => {
+        $crate::is_detected_full($crate::Feature::Bf16)
+    };
+    ("i8mm") => {
+        $crate::is_detected_full($crate::Feature::I8mm)
+    };
+    ("jsconv") => {
+        $crate::is_detected_full($crate::Feature::JsConv)
+    };
+    ("frintts") => {
+        $crate::is_detected_full($crate::Feature::FrintTs)
+    };
+    ("rdm") => {
+        $crate::is_detected_full($crate::Feature::Rdm)
+    };
+    ("dotprod") => {
+        $crate::is_detected_full($crate::Feature::Dotprod)
+    };
+    ("aes") => {
+        $crate::is_detected_full($crate::Feature::Aes)
+    };
+    ("pmull") => {
+        $crate::is_detected_full($crate::Feature::Pmull)
+    };
+    ("sha2") => {
+        $crate::is_detected_full($crate::Feature::Sha2)
+    };
+    ("sha3") => {
+        $crate::is_detected_full($crate::Feature::Sha3)
+    };
+    ("sm4") => {
+        $crate::is_detected_full($crate::Feature::Sm4)
+    };
+    ("crc") => {
+        $crate::is_detected_full($crate::Feature::Crc)
+    };
+    ("lse") => {
+        $crate::is_detected_full($crate::Feature::Lse)
+    };
+    ("lse2") => {
+        $crate::is_detected_full($crate::Feature::Lse2)
+    };
+    ("lse128") => {
+        $crate::is_detected_full($crate::Feature::Lse128)
+    };
+    ("rcpc") => {
+        $crate::is_detected_full($crate::Feature::Rcpc)
+    };
+    ("rcpc2") => {
+        $crate::is_detected_full($crate::Feature::Rcpc2)
+    };
+    ("rcpc3") => {
+        $crate::is_detected_full($crate::Feature::Rcpc3)
+    };
+    ("paca") => {
+        $crate::is_detected_full($crate::Feature::Paca)
+    };
+    ("pacg") => {
+        $crate::is_detected_full($crate::Feature::Pacg)
+    };
+    ("pauth-lr") => {
+        $crate::is_detected_full($crate::Feature::PauthLr)
+    };
+    ("bti") => {
+        $crate::is_detected_full($crate::Feature::Bti)
+    };
+    ("dpb") => {
+        $crate::is_detected_full($crate::Feature::Dpb)
+    };
+    ("dpb2") => {
+        $crate::is_detected_full($crate::Feature::Dpb2)
+    };
+    ("mte") => {
+        $crate::is_detected_full($crate::Feature::Mte)
+    };
+    ("mops") => {
+        $crate::is_detected_full($crate::Feature::Mops)
+    };
+    ("dit") => {
+        $crate::is_detected_full($crate::Feature::Dit)
+    };
+    ("sb") => {
+        $crate::is_detected_full($crate::Feature::Sb)
+    };
+    ("ssbs") => {
+        $crate::is_detected_full($crate::Feature::Ssbs)
+    };
+    ("flagm") => {
+        $crate::is_detected_full($crate::Feature::FlagM)
+    };
+    ("flagm2") => {
+        $crate::is_detected_full($crate::Feature::FlagM2)
+    };
+    ("rand") => {
+        $crate::is_detected_full($crate::Feature::Rand)
+    };
+    ("tme") => {
+        $crate::is_detected_full($crate::Feature::Tme)
+    };
+    ("ecv") => {
+        $crate::is_detected_full($crate::Feature::Ecv)
+    };
+    ("cssc") => {
+        $crate::is_detected_full($crate::Feature::Cssc)
+    };
+    ("wfxt") => {
+        $crate::is_detected_full($crate::Feature::WfxT)
+    };
+    ("hbc") => {
+        $crate::is_detected_full($crate::Feature::Hbc)
+    };
+    ("lut") => {
+        $crate::is_detected_full($crate::Feature::Lut)
+    };
+    ("faminmax") => {
+        $crate::is_detected_full($crate::Feature::FaMinMax)
+    };
+    ("fp8") => {
+        $crate::is_detected_full($crate::Feature::Fp8)
+    };
+    ("fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot2)
+    };
+    ("fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot4)
+    };
+    ("fp8fma") => {
+        $crate::is_detected_full($crate::Feature::Fp8Fma)
+    };
+    ("fpmr") => {
+        $crate::is_detected_full($crate::Feature::Fpmr)
+    };
+    ("sve") => {
+        $crate::is_detected_full($crate::Feature::Sve)
+    };
+    ("sve2") => {
+        $crate::is_detected_full($crate::Feature::Sve2)
+    };
+    ("sve2p1") => {
+        $crate::is_detected_full($crate::Feature::Sve2p1)
+    };
+    ("sve2-aes") => {
+        $crate::is_detected_full($crate::Feature::Sve2Aes)
+    };
+    ("sve2-bitperm") => {
+        $crate::is_detected_full($crate::Feature::Sve2Bitperm)
+    };
+    ("sve2-sha3") => {
+        $crate::is_detected_full($crate::Feature::Sve2Sha3)
+    };
+    ("sve2-sm4") => {
+        $crate::is_detected_full($crate::Feature::Sve2Sm4)
+    };
+    ("sve-b16b16") => {
+        $crate::is_detected_full($crate::Feature::SveB16b16)
+    };
+    ("f32mm") => {
+        $crate::is_detected_full($crate::Feature::F32mm)
+    };
+    ("f64mm") => {
+        $crate::is_detected_full($crate::Feature::F64mm)
+    };
+    ("sme") => {
+        $crate::is_detected_full($crate::Feature::Sme)
+    };
+    ("sme2") => {
+        $crate::is_detected_full($crate::Feature::Sme2)
+    };
+    ("sme2p1") => {
+        $crate::is_detected_full($crate::Feature::Sme2p1)
+    };
+    ("sme-b16b16") => {
+        $crate::is_detected_full($crate::Feature::SmeB16b16)
+    };
+    ("sme-f16f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF16f16)
+    };
+    ("sme-f64f64") => {
+        $crate::is_detected_full($crate::Feature::SmeF64f64)
+    };
+    ("sme-f8f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f16)
+    };
+    ("sme-f8f32") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f32)
+    };
+    ("sme-fa64") => {
+        $crate::is_detected_full($crate::Feature::SmeFa64)
+    };
+    ("sme-i16i64") => {
+        $crate::is_detected_full($crate::Feature::SmeI16i64)
+    };
+    ("sme-lutv2") => {
+        $crate::is_detected_full($crate::Feature::SmeLutv2)
+    };
+    ("ssve-fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot2)
+    };
+    ("ssve-fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot4)
+    };
+    ("ssve-fp8fma") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Fma)
+    };
+    // Catch-all: defer to std for names we don't track. Std validates
+    // and dispatches; future stdarch additions Just Work without any
+    // crate update. (Today this is a narrow gap — std doesn't yet
+    // wire most PF_ARM_* on Windows — but it's growing, e.g. via
+    // rust-lang/rust#155856.)
+    ($other:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($other)
+    };
+}
+
 /// Drop-in single-feature check (non-Windows aarch64 cfg).
 ///
 /// On Linux/macOS aarch64 this expands directly to
@@ -400,6 +661,18 @@ macro_rules! is_aarch64_feature_detected_fast {
     };
 }
 
+/// Drop-in single-feature check via full path (non-Windows aarch64 cfg).
+/// Identical to [`is_aarch64_feature_detected_fast!`] on this target —
+/// std handles non-Windows aarch64 via HWCAP / sysctl, no registry layer
+/// to consult.
+#[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected_full {
+    ($name:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($name)
+    };
+}
+
 /// Drop-in single-feature check (non-aarch64 cfg).
 ///
 /// On non-aarch64 targets, accepts any string literal and returns
@@ -410,6 +683,17 @@ macro_rules! is_aarch64_feature_detected_fast {
 #[cfg(not(target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_fast {
+    ($name:literal) => {{
+        const _: &str = $name;
+        false
+    }};
+}
+
+/// Drop-in single-feature check via full path (non-aarch64 cfg).
+/// Identical to [`is_aarch64_feature_detected_fast!`] on this target.
+#[cfg(not(target_arch = "aarch64"))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected_full {
     ($name:literal) => {{
         const _: &str = $name;
         false
