@@ -115,15 +115,21 @@ pub use features::Feature;
 // IPFP / IPFP+registry caches). Adding a new feature requires
 // updating `features.rs::features!` AND adding arms in BOTH macros.
 //
-// On non-Windows aarch64, both macros are a one-arm `:tt` passthrough
-// to `::std::arch::is_aarch64_feature_detected!`. Std validates names
-// and dispatches; future stdarch additions Just Work without any
-// crate update.
+// On non-Windows aarch64, the macros have specific arms ONLY for the
+// 32 names std gates behind `#![feature(stdarch_aarch64_feature_detection)]`
+// — those route through `is_detected` / `is_detected_full` so the
+// unstable feature gate is contained inside our crate (user's crate
+// stays on stable). Every other name (the 41 stable names + any
+// future stdarch additions) flows through a `:tt` catch-all to
+// `::std::arch::is_aarch64_feature_detected!` — std validates and
+// dispatches; new stable names Just Work without crate updates.
 //
-// On non-aarch64, both macros enumerate the same 73 specific-literal
-// arms returning `false`, plus a catch-all `compile_error!` for unknown
-// names. Catches typos at build time even on platforms where there's
-// no hardware to actually detect.
+// On non-aarch64, both macros are a single `:literal` arm accepting
+// any string literal and returning `false`. Std's macro doesn't
+// compile on non-aarch64, so we can't passthrough; we accept any
+// future name silently rather than block cross-platform code on a
+// crate update. Cross-platform CI on aarch64 targets catches typos
+// via std's validation there.
 
 /// Cheap detection macro.
 ///
@@ -135,11 +141,14 @@ pub use features::Feature;
 /// [`Features::current_full`]) to actually detect those.
 ///
 /// **On non-Windows aarch64**, expands directly to
-/// `std::arch::is_aarch64_feature_detected!($name)`. Any name std
-/// accepts also compiles here, including future stdarch additions.
+/// `std::arch::is_aarch64_feature_detected!($name)` for stable names
+/// and any future stdarch additions; the 32 unstable-on-stable-Rust
+/// names route through our cfg-gated handling internally so users on
+/// stable Rust don't need the unstable feature gate to compile.
 ///
-/// **On non-aarch64**, returns `false` for every documented name (and
-/// `compile_error!` for typos).
+/// **On non-aarch64**, accepts any string literal and returns `false`
+/// (std's macro doesn't compile on non-aarch64, so we can't passthrough
+/// to validate; cross-platform CI on aarch64 catches typos there).
 ///
 /// ```no_run
 /// if winarm_cpufeatures::is_aarch64_feature_detected!("aes") {
@@ -370,22 +379,123 @@ macro_rules! is_aarch64_feature_detected {
     ("ssve-fp8fma") => {
         $crate::is_detected($crate::Feature::SsveFp8Fma)
     };
-    // Unknown name on Windows aarch64 — winarm doesn't know about it.
-    // (On non-Windows aarch64 std would handle this; here we error so
-    // the user knows winarm needs updating to track new names.)
-    ($other:literal) => {
-        ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name '",
-            $other,
-            "': winarm-cpufeatures does not track this name on Windows aarch64. ",
-            "If std accepts it on other targets, please file an issue to add it.",
-        ))
+    // Catch-all: defer to std for names we don't track. Std validates
+    // and dispatches; future stdarch additions Just Work without any
+    // crate update. (Today this is a narrow gap — std doesn't yet
+    // wire most PF_ARM_* on Windows — but it's growing, e.g. via
+    // rust-lang/rust#155856.)
+    ($other:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($other)
     };
 }
 
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected {
+    // The 32 names that std gates behind
+    // `#![feature(stdarch_aarch64_feature_detection)]`. We route them
+    // through `is_detected`, whose body cfg-gates on our
+    // `nightly-stdarch` Cargo feature — returning `false` on stable
+    // and dispatching through std on nightly, with the unstable gate
+    // contained in *our* crate so the user's crate doesn't need it.
+    ("cssc") => {
+        $crate::is_detected($crate::Feature::Cssc)
+    };
+    ("ecv") => {
+        $crate::is_detected($crate::Feature::Ecv)
+    };
+    ("faminmax") => {
+        $crate::is_detected($crate::Feature::FaMinMax)
+    };
+    ("flagm2") => {
+        $crate::is_detected($crate::Feature::FlagM2)
+    };
+    ("fp8") => {
+        $crate::is_detected($crate::Feature::Fp8)
+    };
+    ("fp8dot2") => {
+        $crate::is_detected($crate::Feature::Fp8Dot2)
+    };
+    ("fp8dot4") => {
+        $crate::is_detected($crate::Feature::Fp8Dot4)
+    };
+    ("fp8fma") => {
+        $crate::is_detected($crate::Feature::Fp8Fma)
+    };
+    ("fpmr") => {
+        $crate::is_detected($crate::Feature::Fpmr)
+    };
+    ("hbc") => {
+        $crate::is_detected($crate::Feature::Hbc)
+    };
+    ("lse128") => {
+        $crate::is_detected($crate::Feature::Lse128)
+    };
+    ("lut") => {
+        $crate::is_detected($crate::Feature::Lut)
+    };
+    ("mops") => {
+        $crate::is_detected($crate::Feature::Mops)
+    };
+    ("pauth-lr") => {
+        $crate::is_detected($crate::Feature::PauthLr)
+    };
+    ("rcpc3") => {
+        $crate::is_detected($crate::Feature::Rcpc3)
+    };
+    ("sme") => {
+        $crate::is_detected($crate::Feature::Sme)
+    };
+    ("sme2") => {
+        $crate::is_detected($crate::Feature::Sme2)
+    };
+    ("sme2p1") => {
+        $crate::is_detected($crate::Feature::Sme2p1)
+    };
+    ("sme-b16b16") => {
+        $crate::is_detected($crate::Feature::SmeB16b16)
+    };
+    ("sme-f16f16") => {
+        $crate::is_detected($crate::Feature::SmeF16f16)
+    };
+    ("sme-f64f64") => {
+        $crate::is_detected($crate::Feature::SmeF64f64)
+    };
+    ("sme-f8f16") => {
+        $crate::is_detected($crate::Feature::SmeF8f16)
+    };
+    ("sme-f8f32") => {
+        $crate::is_detected($crate::Feature::SmeF8f32)
+    };
+    ("sme-fa64") => {
+        $crate::is_detected($crate::Feature::SmeFa64)
+    };
+    ("sme-i16i64") => {
+        $crate::is_detected($crate::Feature::SmeI16i64)
+    };
+    ("sme-lutv2") => {
+        $crate::is_detected($crate::Feature::SmeLutv2)
+    };
+    ("ssve-fp8dot2") => {
+        $crate::is_detected($crate::Feature::SsveFp8Dot2)
+    };
+    ("ssve-fp8dot4") => {
+        $crate::is_detected($crate::Feature::SsveFp8Dot4)
+    };
+    ("ssve-fp8fma") => {
+        $crate::is_detected($crate::Feature::SsveFp8Fma)
+    };
+    ("sve2p1") => {
+        $crate::is_detected($crate::Feature::Sve2p1)
+    };
+    ("sve-b16b16") => {
+        $crate::is_detected($crate::Feature::SveB16b16)
+    };
+    ("wfxt") => {
+        $crate::is_detected($crate::Feature::WfxT)
+    };
+    // Stable names + any future stdarch additions: passthrough to
+    // std. Std validates and dispatches; new stable names Just Work.
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)
     };
@@ -394,233 +504,15 @@ macro_rules! is_aarch64_feature_detected {
 #[cfg(not(target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected {
-    ("asimd") => {
-        false
-    };
-    ("fp") => {
-        false
-    };
-    ("fp16") => {
-        false
-    };
-    ("fhm") => {
-        false
-    };
-    ("fcma") => {
-        false
-    };
-    ("bf16") => {
-        false
-    };
-    ("i8mm") => {
-        false
-    };
-    ("jsconv") => {
-        false
-    };
-    ("frintts") => {
-        false
-    };
-    ("rdm") => {
-        false
-    };
-    ("dotprod") => {
-        false
-    };
-    ("aes") => {
-        false
-    };
-    ("pmull") => {
-        false
-    };
-    ("sha2") => {
-        false
-    };
-    ("sha3") => {
-        false
-    };
-    ("sm4") => {
-        false
-    };
-    ("crc") => {
-        false
-    };
-    ("lse") => {
-        false
-    };
-    ("lse2") => {
-        false
-    };
-    ("lse128") => {
-        false
-    };
-    ("rcpc") => {
-        false
-    };
-    ("rcpc2") => {
-        false
-    };
-    ("rcpc3") => {
-        false
-    };
-    ("paca") => {
-        false
-    };
-    ("pacg") => {
-        false
-    };
-    ("pauth-lr") => {
-        false
-    };
-    ("bti") => {
-        false
-    };
-    ("dpb") => {
-        false
-    };
-    ("dpb2") => {
-        false
-    };
-    ("mte") => {
-        false
-    };
-    ("mops") => {
-        false
-    };
-    ("dit") => {
-        false
-    };
-    ("sb") => {
-        false
-    };
-    ("ssbs") => {
-        false
-    };
-    ("flagm") => {
-        false
-    };
-    ("flagm2") => {
-        false
-    };
-    ("rand") => {
-        false
-    };
-    ("tme") => {
-        false
-    };
-    ("ecv") => {
-        false
-    };
-    ("cssc") => {
-        false
-    };
-    ("wfxt") => {
-        false
-    };
-    ("hbc") => {
-        false
-    };
-    ("lut") => {
-        false
-    };
-    ("faminmax") => {
-        false
-    };
-    ("fp8") => {
-        false
-    };
-    ("fp8dot2") => {
-        false
-    };
-    ("fp8dot4") => {
-        false
-    };
-    ("fp8fma") => {
-        false
-    };
-    ("fpmr") => {
-        false
-    };
-    ("sve") => {
-        false
-    };
-    ("sve2") => {
-        false
-    };
-    ("sve2p1") => {
-        false
-    };
-    ("sve2-aes") => {
-        false
-    };
-    ("sve2-bitperm") => {
-        false
-    };
-    ("sve2-sha3") => {
-        false
-    };
-    ("sve2-sm4") => {
-        false
-    };
-    ("sve-b16b16") => {
-        false
-    };
-    ("f32mm") => {
-        false
-    };
-    ("f64mm") => {
-        false
-    };
-    ("sme") => {
-        false
-    };
-    ("sme2") => {
-        false
-    };
-    ("sme2p1") => {
-        false
-    };
-    ("sme-b16b16") => {
-        false
-    };
-    ("sme-f16f16") => {
-        false
-    };
-    ("sme-f64f64") => {
-        false
-    };
-    ("sme-f8f16") => {
-        false
-    };
-    ("sme-f8f32") => {
-        false
-    };
-    ("sme-fa64") => {
-        false
-    };
-    ("sme-i16i64") => {
-        false
-    };
-    ("sme-lutv2") => {
-        false
-    };
-    ("ssve-fp8dot2") => {
-        false
-    };
-    ("ssve-fp8dot4") => {
-        false
-    };
-    ("ssve-fp8fma") => {
-        false
-    };
-    ($other:literal) => {
-        ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name '",
-            $other,
-            "': winarm-cpufeatures does not track this name. ",
-            "If std accepts it on aarch64 targets, please file an issue to add it.",
-        ))
-    };
+    // Single-arm: every documented name returns false on non-aarch64.
+    // No std passthrough here (std::arch::is_aarch64_feature_detected!
+    // doesn't compile on non-aarch64), so we accept any string literal
+    // and return false. Cross-platform CI on aarch64 targets catches
+    // typos via std validation.
+    ($name:literal) => {{
+        const _: &str = $name;
+        false
+    }};
 }
 
 /// Full detection macro.
@@ -863,19 +755,118 @@ macro_rules! is_aarch64_feature_detected_full {
     ("ssve-fp8fma") => {
         $crate::is_detected_full($crate::Feature::SsveFp8Fma)
     };
-    ($other:literal) => {
-        ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name '",
-            $other,
-            "': winarm-cpufeatures does not track this name on Windows aarch64. ",
-            "If std accepts it on other targets, please file an issue to add it.",
-        ))
+    // Catch-all: defer to std for names we don't track. Note that for
+    // unknown names we lose the registry-decode advantage — but if a
+    // name isn't in our enum, we can't decode it from registry either,
+    // so std's IPFP-based answer is the best we can do.
+    ($other:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($other)
     };
 }
 
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_full {
+    // Same shape as `is_aarch64_feature_detected!` on this target —
+    // there's no registry layer to differ on. The 32 unstable names
+    // route through `is_detected_full` so we keep the unstable gate
+    // contained in our crate.
+    ("cssc") => {
+        $crate::is_detected_full($crate::Feature::Cssc)
+    };
+    ("ecv") => {
+        $crate::is_detected_full($crate::Feature::Ecv)
+    };
+    ("faminmax") => {
+        $crate::is_detected_full($crate::Feature::FaMinMax)
+    };
+    ("flagm2") => {
+        $crate::is_detected_full($crate::Feature::FlagM2)
+    };
+    ("fp8") => {
+        $crate::is_detected_full($crate::Feature::Fp8)
+    };
+    ("fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot2)
+    };
+    ("fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::Fp8Dot4)
+    };
+    ("fp8fma") => {
+        $crate::is_detected_full($crate::Feature::Fp8Fma)
+    };
+    ("fpmr") => {
+        $crate::is_detected_full($crate::Feature::Fpmr)
+    };
+    ("hbc") => {
+        $crate::is_detected_full($crate::Feature::Hbc)
+    };
+    ("lse128") => {
+        $crate::is_detected_full($crate::Feature::Lse128)
+    };
+    ("lut") => {
+        $crate::is_detected_full($crate::Feature::Lut)
+    };
+    ("mops") => {
+        $crate::is_detected_full($crate::Feature::Mops)
+    };
+    ("pauth-lr") => {
+        $crate::is_detected_full($crate::Feature::PauthLr)
+    };
+    ("rcpc3") => {
+        $crate::is_detected_full($crate::Feature::Rcpc3)
+    };
+    ("sme") => {
+        $crate::is_detected_full($crate::Feature::Sme)
+    };
+    ("sme2") => {
+        $crate::is_detected_full($crate::Feature::Sme2)
+    };
+    ("sme2p1") => {
+        $crate::is_detected_full($crate::Feature::Sme2p1)
+    };
+    ("sme-b16b16") => {
+        $crate::is_detected_full($crate::Feature::SmeB16b16)
+    };
+    ("sme-f16f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF16f16)
+    };
+    ("sme-f64f64") => {
+        $crate::is_detected_full($crate::Feature::SmeF64f64)
+    };
+    ("sme-f8f16") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f16)
+    };
+    ("sme-f8f32") => {
+        $crate::is_detected_full($crate::Feature::SmeF8f32)
+    };
+    ("sme-fa64") => {
+        $crate::is_detected_full($crate::Feature::SmeFa64)
+    };
+    ("sme-i16i64") => {
+        $crate::is_detected_full($crate::Feature::SmeI16i64)
+    };
+    ("sme-lutv2") => {
+        $crate::is_detected_full($crate::Feature::SmeLutv2)
+    };
+    ("ssve-fp8dot2") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot2)
+    };
+    ("ssve-fp8dot4") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Dot4)
+    };
+    ("ssve-fp8fma") => {
+        $crate::is_detected_full($crate::Feature::SsveFp8Fma)
+    };
+    ("sve2p1") => {
+        $crate::is_detected_full($crate::Feature::Sve2p1)
+    };
+    ("sve-b16b16") => {
+        $crate::is_detected_full($crate::Feature::SveB16b16)
+    };
+    ("wfxt") => {
+        $crate::is_detected_full($crate::Feature::WfxT)
+    };
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)
     };
@@ -884,231 +875,13 @@ macro_rules! is_aarch64_feature_detected_full {
 #[cfg(not(target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_full {
-    ("asimd") => {
-        false
-    };
-    ("fp") => {
-        false
-    };
-    ("fp16") => {
-        false
-    };
-    ("fhm") => {
-        false
-    };
-    ("fcma") => {
-        false
-    };
-    ("bf16") => {
-        false
-    };
-    ("i8mm") => {
-        false
-    };
-    ("jsconv") => {
-        false
-    };
-    ("frintts") => {
-        false
-    };
-    ("rdm") => {
-        false
-    };
-    ("dotprod") => {
-        false
-    };
-    ("aes") => {
-        false
-    };
-    ("pmull") => {
-        false
-    };
-    ("sha2") => {
-        false
-    };
-    ("sha3") => {
-        false
-    };
-    ("sm4") => {
-        false
-    };
-    ("crc") => {
-        false
-    };
-    ("lse") => {
-        false
-    };
-    ("lse2") => {
-        false
-    };
-    ("lse128") => {
-        false
-    };
-    ("rcpc") => {
-        false
-    };
-    ("rcpc2") => {
-        false
-    };
-    ("rcpc3") => {
-        false
-    };
-    ("paca") => {
-        false
-    };
-    ("pacg") => {
-        false
-    };
-    ("pauth-lr") => {
-        false
-    };
-    ("bti") => {
-        false
-    };
-    ("dpb") => {
-        false
-    };
-    ("dpb2") => {
-        false
-    };
-    ("mte") => {
-        false
-    };
-    ("mops") => {
-        false
-    };
-    ("dit") => {
-        false
-    };
-    ("sb") => {
-        false
-    };
-    ("ssbs") => {
-        false
-    };
-    ("flagm") => {
-        false
-    };
-    ("flagm2") => {
-        false
-    };
-    ("rand") => {
-        false
-    };
-    ("tme") => {
-        false
-    };
-    ("ecv") => {
-        false
-    };
-    ("cssc") => {
-        false
-    };
-    ("wfxt") => {
-        false
-    };
-    ("hbc") => {
-        false
-    };
-    ("lut") => {
-        false
-    };
-    ("faminmax") => {
-        false
-    };
-    ("fp8") => {
-        false
-    };
-    ("fp8dot2") => {
-        false
-    };
-    ("fp8dot4") => {
-        false
-    };
-    ("fp8fma") => {
-        false
-    };
-    ("fpmr") => {
-        false
-    };
-    ("sve") => {
-        false
-    };
-    ("sve2") => {
-        false
-    };
-    ("sve2p1") => {
-        false
-    };
-    ("sve2-aes") => {
-        false
-    };
-    ("sve2-bitperm") => {
-        false
-    };
-    ("sve2-sha3") => {
-        false
-    };
-    ("sve2-sm4") => {
-        false
-    };
-    ("sve-b16b16") => {
-        false
-    };
-    ("f32mm") => {
-        false
-    };
-    ("f64mm") => {
-        false
-    };
-    ("sme") => {
-        false
-    };
-    ("sme2") => {
-        false
-    };
-    ("sme2p1") => {
-        false
-    };
-    ("sme-b16b16") => {
-        false
-    };
-    ("sme-f16f16") => {
-        false
-    };
-    ("sme-f64f64") => {
-        false
-    };
-    ("sme-f8f16") => {
-        false
-    };
-    ("sme-f8f32") => {
-        false
-    };
-    ("sme-fa64") => {
-        false
-    };
-    ("sme-i16i64") => {
-        false
-    };
-    ("sme-lutv2") => {
-        false
-    };
-    ("ssve-fp8dot2") => {
-        false
-    };
-    ("ssve-fp8dot4") => {
-        false
-    };
-    ("ssve-fp8fma") => {
-        false
-    };
-    ($other:literal) => {
-        ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name '",
-            $other,
-            "': winarm-cpufeatures does not track this name. ",
-            "If std accepts it on aarch64 targets, please file an issue to add it.",
-        ))
-    };
+    // Single-arm: every documented name returns false on non-aarch64.
+    // No std passthrough here (std::arch::is_aarch64_feature_detected!
+    // doesn't compile on non-aarch64), so we accept any string literal
+    // and return false. Cross-platform CI on aarch64 targets catches
+    // typos via std validation.
+    ($name:literal) => {{
+        const _: &str = $name;
+        false
+    }};
 }
