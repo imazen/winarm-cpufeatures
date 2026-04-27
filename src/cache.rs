@@ -287,19 +287,18 @@ fn stdarch_dispatch(feature: Feature) -> bool {
     }
 }
 
-/// Authorise the registry-based detection layer at runtime.
+/// Set the runtime authorisation for the registry-based detection layer.
 ///
-/// **Compile-time + runtime double opt-in.** The registry FFI is only
-/// linked into your binary when *some* crate enables the
-/// `winarm-cpufeatures/registry` Cargo feature; this function is the
-/// second tier — it must be called before any
-/// [`is_aarch64_feature_detected_full!`] / [`Features::current_full`]
-/// call for the registry to actually be consulted. Without it, the
-/// registry code stays untouched even when it's compiled in.
+/// The `registry` Cargo feature is the actual gate — it controls
+/// whether the registry FFI is linked at all. When that feature is on,
+/// the runtime gate defaults to `true`, so the registry IS consulted
+/// without any setup. Pass `false` here at startup to suppress it
+/// (sandboxed processes without `HKLM` read access; deterministic
+/// IPFP-only diagnostics; tests).
 ///
-/// On builds where the registry layer doesn't apply (non-Windows-aarch64,
-/// or the `registry` Cargo feature is off), this function is a no-op
-/// kept available for API stability.
+/// On builds where the registry layer doesn't apply (non-Windows
+/// aarch64, or the `registry` Cargo feature off), this function is a
+/// no-op kept available for API stability.
 ///
 /// [`is_aarch64_feature_detected_full!`]: crate::is_aarch64_feature_detected_full!
 #[inline]
@@ -337,11 +336,18 @@ mod windows_cache {
     pub(super) static FULL_LO: AtomicU64 = AtomicU64::new(0);
     pub(super) static FULL_HI: AtomicU64 = AtomicU64::new(0);
 
-    /// Runtime opt-in for the registry layer. Defaults to `false` so the
-    /// registry path is *never touched* unless the application explicitly
-    /// asks for it — even when transitive dependencies have enabled the
-    /// `registry` Cargo feature.
-    static REGISTRY_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(false);
+    /// Runtime opt-out for the registry layer. The `registry` Cargo
+    /// feature is the actual gate — it controls whether the registry FFI
+    /// is linked at all. When that feature is on, the registry IS
+    /// consulted by default; sandboxed callers (no permission to read
+    /// `HKLM`, or wanting deterministic IPFP-only behavior) can call
+    /// `set_registry_enabled(false)` once at startup to suppress it.
+    ///
+    /// Defaulting this to `true` removes a silent footgun: previously a
+    /// user could enable `features = ["registry"]` and still see
+    /// registry-only features report `false` because they didn't also
+    /// know to call `set_registry_enabled(true)`.
+    static REGISTRY_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(true);
 
     #[inline]
     pub(super) fn ensure_fast() {

@@ -11,72 +11,69 @@
 //! — including the headline miss `rdm`, which is mandatory on every
 //! Windows-on-ARM CPU.
 //!
-//! ## Two layers, the second behind a feature flag
+//! ## Drop-in for std
 //!
-//! 1. **Always-on (the IPFP layer).** Wires every `PF_ARM_*` constant from
-//!    SDK 26100. Plus one architectural inference: `rdm` is set whenever
-//!    `PF_ARM_V81_ATOMIC` (LSE) or `PF_ARM_V82_DP` (DotProd) is — the same
-//!    rule .NET 10 ships in production, citing ARM ARM K.a §D17.2.91 (see
-//!    [`dotnet/runtime#109493`](https://github.com/dotnet/runtime/pull/109493)).
-//!    Each probe is one syscall returning a `BOOL`; the whole pass cached
-//!    after first call.
+//! Same name, same dashed feature spelling, same call shape as
+//! `std::arch::is_aarch64_feature_detected!`. Migration is one import
+//! line:
 //!
-//! 2. **Double opt-in (`registry` Cargo feature + runtime authorisation).**
-//!    Adds `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`
-//!    reads that decode the cached `ID_AA64*_EL1` snapshots Windows
-//!    publishes. Covers ~30 stdarch names IPFP can't reach: `fhm`, `fcma`,
-//!    `frintts`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`,
-//!    `sb`, `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`,
-//!    `sm4`, `rcpc2`/`rcpc3`, `pauth-lr`, `lse128`, etc. One
-//!    `RegOpenKeyExW` + a handful of `RegGetValueW` calls on first probe.
+//! ```
+//! # #[cfg(any())] mod _example {
+//! // before
+//! use std::arch::is_aarch64_feature_detected;
+//! // after
+//! use winarm_cpufeatures::is_aarch64_feature_detected;
+//! # }
+//! ```
 //!
-//!    Cargo features union across the dependency graph — if any
-//!    transitive crate enables `registry`, the FFI gets linked into your
-//!    binary. The runtime gate ([`set_registry_enabled`]) is the second
-//!    tier: the registry is consulted only when the application
-//!    explicitly authorises it. Without that call, the registry layer
-//!    is compiled-but-dormant.
+//! Every existing call site stays unchanged.
 //!
-//! Default features: empty. Default runtime: registry off. The
-//! IPFP-only-with-RDM-derivation mode matches what .NET 10,
-//! pytorch/cpuinfo, and Microsoft's own Windows runtime ship.
+//! ## How it dispatches
 //!
-//! ## Two macros, two cost tiers
+//! - **Windows aarch64**: probes `IsProcessorFeaturePresent` (~30 names)
+//!   plus the DP/LSE → RDM architectural inference (matches .NET 10's
+//!   rule from ARM ARM K.a §D17.2.91 — see `dotnet/runtime#109493`). The
+//!   `registry` Cargo feature adds an `HKLM\…\CentralProcessor\0\CP <hex>`
+//!   decoder for the ~30 stdarch names IPFP can't reach (`fhm`, `fcma`,
+//!   `frintts`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `mte`, `mops`, `dit`,
+//!   `sb`, `ssbs`, `flagm`/`flagm2`, `rand`, `cssc`, `wfxt`, `hbc`,
+//!   `sm4`, `rcpc2`/`rcpc3`, `pauth-lr`, `lse128`, etc.). Both layers
+//!   cache after first probe.
+//! - **Non-Windows aarch64** (Linux, macOS): macros expand directly to
+//!   `std::arch::is_aarch64_feature_detected!`. No added cache layer; std
+//!   handles everything, including any future stdarch additions before
+//!   we know about them.
+//! - **Non-aarch64**: every name returns `false`. Lets cross-platform
+//!   code use one spelling.
 //!
-//! | Macro              | Backend on Windows ARM           | Compile error if feature… |
-//! |--------------------|----------------------------------|---------------------------|
-//! | [`is_aarch64_feature_detected!`]      | IPFP only (always cheap)         | needs the registry layer  |
-//! | [`is_aarch64_feature_detected_full!`] | IPFP + (with `registry`) CP keys | never                     |
+//! ## Two macros, two cost tiers (Windows aarch64 only)
 //!
-//! Without the `registry` feature, [`is_aarch64_feature_detected_full!`] is identical to
-//! [`is_aarch64_feature_detected!`]. With it, [`is_aarch64_feature_detected_full!`] additionally consults the
-//! registry-decoded bits.
+//! - [`is_aarch64_feature_detected!`] reads the IPFP-only cache. Names
+//!   IPFP can't see (Registry-classified) silently return `false`,
+//!   matching std's behaviour on Windows.
+//! - [`is_aarch64_feature_detected_full!`] reads the IPFP + registry
+//!   cache (when the `registry` Cargo feature is on). First call opens
+//!   the registry key; subsequent calls hit the cached bitset. The
+//!   runtime gate ([`set_registry_enabled`]) defaults to **on** when
+//!   the Cargo feature is enabled — pass `false` to suppress for
+//!   sandboxed processes.
 //!
-//! Each macro maintains its own cache. Probes are idempotent so racing
-//! initializers are fine; both caches use `Ordering::Relaxed` atomic loads.
-//!
-//! On every non-Windows-ARM platform, both macros expand to
-//! `std::arch::is_aarch64_feature_detected!` directly.
+//! On non-Windows aarch64 and on non-aarch64, the two macros are
+//! identical (no registry layer to differ on).
 //!
 //! ## Quick reference
 //!
 //! ```no_run
-//! use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full, set_registry_enabled};
+//! use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
 //!
-//! // Always-on. `rdm` works because it's IPFP-derived (DP||LSE → RDM).
+//! // `rdm` works because it's IPFP-derived (DP||LSE → RDM).
 //! if is_aarch64_feature_detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
 //! if is_aarch64_feature_detected!("sve") { /* SVE kernel */ }
 //! if is_aarch64_feature_detected!("aes") { /* AES instructions */ }
 //!
-//! // Authorise registry layer at runtime (compile-time `registry` feature
-//! // must also be enabled, or this is a no-op). Best done once at startup,
-//! // before any `is_aarch64_feature_detected_full!` query.
-//! set_registry_enabled(true);
-//!
+//! // Registry-decoded names need _full! on Windows aarch64. Identical
+//! // to the fast macro on every other target.
 //! if is_aarch64_feature_detected_full!("paca") { /* Pointer Auth address-key */ }
-//!
-//! // Compile error: "paca" is registry-only.
-//! // let _ = winarm_cpufeatures::is_aarch64_feature_detected!("paca");
 //! ```
 //!
 //! ## Comparison to other crates
@@ -111,42 +108,49 @@ mod windows;
 pub use cache::{Features, is_detected, is_detected_full, set_registry_enabled};
 pub use features::Feature;
 
-// ─── Macro dispatch — one arm per feature name ───────────────────────────
+// ─── Macro dispatch — per-target ─────────────────────────────────────────
 //
-// Both macros use direct `macro_rules!` arm dispatch instead of a const
-// lookup table. Each `is_aarch64_feature_detected!`/`is_aarch64_feature_detected_full!` call site expands to
-// exactly one expression — no const-eval, no `panic!`-based assertions,
-// no string-compare loop. This keeps downstream compile time flat in the
-// number of call sites.
+// On Windows aarch64, each macro has 73 specific-literal arms that
+// dispatch to `is_detected` / `is_detected_full` (which read the
+// IPFP / IPFP+registry caches). Adding a new feature requires
+// updating `features.rs::features!` AND adding arms in BOTH macros.
 //
-// Source of truth for the (name, variant, detection-method) triples is
-// `features.rs::features!`. If you add a feature there, add an arm here
-// in BOTH macros — Registry-classified names get a `compile_error!`
-// arm in `is_aarch64_feature_detected!` pointing at `is_aarch64_feature_detected_full!`. The smoke tests
-// cover every name through both macros, so missing arms surface
-// immediately.
+// On non-Windows aarch64, both macros are a one-arm `:tt` passthrough
+// to `::std::arch::is_aarch64_feature_detected!`. Std validates names
+// and dispatches; future stdarch additions Just Work without any
+// crate update.
+//
+// On non-aarch64, both macros enumerate the same 73 specific-literal
+// arms returning `false`, plus a catch-all `compile_error!` for unknown
+// names. Catches typos at build time even on platforms where there's
+// no hardware to actually detect.
 
-/// Cheap detection — uses `IsProcessorFeaturePresent` only on Windows ARM64.
+/// Cheap detection macro.
 ///
-/// **Compile error** if `$name` is one of the ~33 features Microsoft has
-/// never exposed via `IsProcessorFeaturePresent` (e.g. `paca`, `bti`,
-/// `dpb`, `flagm`, `mte`). Those require registry detection — use
-/// [`is_aarch64_feature_detected_full!`].
+/// **On Windows ARM64**, reads the IPFP-only cache. Names that
+/// Microsoft has never exposed via `IsProcessorFeaturePresent`
+/// (Registry-classified — `paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`,
+/// `fcma`, `frintts`, `sm4`, etc.) silently return `false` — matching
+/// std's behaviour. Use [`is_aarch64_feature_detected_full!`] (or
+/// [`Features::current_full`]) to actually detect those.
 ///
-/// **Compile error** if `$name` is not a known aarch64 feature name.
+/// **On non-Windows aarch64**, expands directly to
+/// `std::arch::is_aarch64_feature_detected!($name)`. Any name std
+/// accepts also compiles here, including future stdarch additions.
 ///
-/// On non-Windows-ARM targets, this consults the per-process cache that
-/// was populated by `std::arch::is_aarch64_feature_detected!` on first
-/// access.
+/// **On non-aarch64**, returns `false` for every documented name (and
+/// `compile_error!` for typos).
 ///
 /// ```no_run
-/// if winarm_cpufeatures::is_aarch64_feature_detected!("sve") {
-///     // SVE kernel
+/// if winarm_cpufeatures::is_aarch64_feature_detected!("aes") {
+///     // AES instructions
 /// }
 /// ```
+///
+/// [`Features::current_full`]: crate::Features::current_full
+#[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected {
-    // ── Ipfp / Both — direct dispatch to `is_detected` ────────────────────
     ("asimd") => {
         $crate::is_detected($crate::Feature::Asimd)
     };
@@ -156,6 +160,12 @@ macro_rules! is_aarch64_feature_detected {
     ("fp16") => {
         $crate::is_detected($crate::Feature::Fp16)
     };
+    ("fhm") => {
+        $crate::is_detected($crate::Feature::Fhm)
+    };
+    ("fcma") => {
+        $crate::is_detected($crate::Feature::Fcma)
+    };
     ("bf16") => {
         $crate::is_detected($crate::Feature::Bf16)
     };
@@ -164,6 +174,9 @@ macro_rules! is_aarch64_feature_detected {
     };
     ("jsconv") => {
         $crate::is_detected($crate::Feature::JsConv)
+    };
+    ("frintts") => {
+        $crate::is_detected($crate::Feature::FrintTs)
     };
     ("rdm") => {
         $crate::is_detected($crate::Feature::Rdm)
@@ -183,6 +196,9 @@ macro_rules! is_aarch64_feature_detected {
     ("sha3") => {
         $crate::is_detected($crate::Feature::Sha3)
     };
+    ("sm4") => {
+        $crate::is_detected($crate::Feature::Sm4)
+    };
     ("crc") => {
         $crate::is_detected($crate::Feature::Crc)
     };
@@ -192,8 +208,95 @@ macro_rules! is_aarch64_feature_detected {
     ("lse2") => {
         $crate::is_detected($crate::Feature::Lse2)
     };
+    ("lse128") => {
+        $crate::is_detected($crate::Feature::Lse128)
+    };
     ("rcpc") => {
         $crate::is_detected($crate::Feature::Rcpc)
+    };
+    ("rcpc2") => {
+        $crate::is_detected($crate::Feature::Rcpc2)
+    };
+    ("rcpc3") => {
+        $crate::is_detected($crate::Feature::Rcpc3)
+    };
+    ("paca") => {
+        $crate::is_detected($crate::Feature::Paca)
+    };
+    ("pacg") => {
+        $crate::is_detected($crate::Feature::Pacg)
+    };
+    ("pauth-lr") => {
+        $crate::is_detected($crate::Feature::PauthLr)
+    };
+    ("bti") => {
+        $crate::is_detected($crate::Feature::Bti)
+    };
+    ("dpb") => {
+        $crate::is_detected($crate::Feature::Dpb)
+    };
+    ("dpb2") => {
+        $crate::is_detected($crate::Feature::Dpb2)
+    };
+    ("mte") => {
+        $crate::is_detected($crate::Feature::Mte)
+    };
+    ("mops") => {
+        $crate::is_detected($crate::Feature::Mops)
+    };
+    ("dit") => {
+        $crate::is_detected($crate::Feature::Dit)
+    };
+    ("sb") => {
+        $crate::is_detected($crate::Feature::Sb)
+    };
+    ("ssbs") => {
+        $crate::is_detected($crate::Feature::Ssbs)
+    };
+    ("flagm") => {
+        $crate::is_detected($crate::Feature::FlagM)
+    };
+    ("flagm2") => {
+        $crate::is_detected($crate::Feature::FlagM2)
+    };
+    ("rand") => {
+        $crate::is_detected($crate::Feature::Rand)
+    };
+    ("tme") => {
+        $crate::is_detected($crate::Feature::Tme)
+    };
+    ("ecv") => {
+        $crate::is_detected($crate::Feature::Ecv)
+    };
+    ("cssc") => {
+        $crate::is_detected($crate::Feature::Cssc)
+    };
+    ("wfxt") => {
+        $crate::is_detected($crate::Feature::WfxT)
+    };
+    ("hbc") => {
+        $crate::is_detected($crate::Feature::Hbc)
+    };
+    ("lut") => {
+        $crate::is_detected($crate::Feature::Lut)
+    };
+    ("faminmax") => {
+        $crate::is_detected($crate::Feature::FaMinMax)
+    };
+    ("fp8") => {
+        $crate::is_detected($crate::Feature::Fp8)
+    };
+    ("fp8dot2") => {
+        $crate::is_detected($crate::Feature::Fp8Dot2)
+    };
+    ("fp8dot4") => {
+        $crate::is_detected($crate::Feature::Fp8Dot4)
+    };
+    ("fp8fma") => {
+        $crate::is_detected($crate::Feature::Fp8Fma)
+    };
+    ("fpmr") => {
+        $crate::is_detected($crate::Feature::Fpmr)
     };
     ("sve") => {
         $crate::is_detected($crate::Feature::Sve)
@@ -267,135 +370,278 @@ macro_rules! is_aarch64_feature_detected {
     ("ssve-fp8fma") => {
         $crate::is_detected($crate::Feature::SsveFp8Fma)
     };
-    // ── Registry-only — compile error pointing at is_aarch64_feature_detected_full! ─────────
-    ("fhm") => {
-        ::core::compile_error!(::core::concat!("feature 'fhm' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fcma") => {
-        ::core::compile_error!(::core::concat!("feature 'fcma' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("frintts") => {
-        ::core::compile_error!(::core::concat!("feature 'frintts' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("sm4") => {
-        ::core::compile_error!(::core::concat!("feature 'sm4' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("lse128") => {
-        ::core::compile_error!(::core::concat!("feature 'lse128' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("rcpc2") => {
-        ::core::compile_error!(::core::concat!("feature 'rcpc2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("rcpc3") => {
-        ::core::compile_error!(::core::concat!("feature 'rcpc3' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("paca") => {
-        ::core::compile_error!(::core::concat!("feature 'paca' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("pacg") => {
-        ::core::compile_error!(::core::concat!("feature 'pacg' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("pauth-lr") => {
-        ::core::compile_error!(::core::concat!("feature 'pauth-lr' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("bti") => {
-        ::core::compile_error!(::core::concat!("feature 'bti' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("dpb") => {
-        ::core::compile_error!(::core::concat!("feature 'dpb' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("dpb2") => {
-        ::core::compile_error!(::core::concat!("feature 'dpb2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("mte") => {
-        ::core::compile_error!(::core::concat!("feature 'mte' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("mops") => {
-        ::core::compile_error!(::core::concat!("feature 'mops' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("dit") => {
-        ::core::compile_error!(::core::concat!("feature 'dit' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("sb") => {
-        ::core::compile_error!(::core::concat!("feature 'sb' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("ssbs") => {
-        ::core::compile_error!(::core::concat!("feature 'ssbs' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("flagm") => {
-        ::core::compile_error!(::core::concat!("feature 'flagm' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("flagm2") => {
-        ::core::compile_error!(::core::concat!("feature 'flagm2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("rand") => {
-        ::core::compile_error!(::core::concat!("feature 'rand' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("tme") => {
-        ::core::compile_error!(::core::concat!("feature 'tme' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("ecv") => {
-        ::core::compile_error!(::core::concat!("feature 'ecv' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("cssc") => {
-        ::core::compile_error!(::core::concat!("feature 'cssc' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("wfxt") => {
-        ::core::compile_error!(::core::concat!("feature 'wfxt' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("hbc") => {
-        ::core::compile_error!(::core::concat!("feature 'hbc' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("lut") => {
-        ::core::compile_error!(::core::concat!("feature 'lut' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("faminmax") => {
-        ::core::compile_error!(::core::concat!("feature 'faminmax' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fp8") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fp8dot2") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8dot2' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fp8dot4") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8dot4' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fp8fma") => {
-        ::core::compile_error!(::core::concat!("feature 'fp8fma' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    ("fpmr") => {
-        ::core::compile_error!(::core::concat!("feature 'fpmr' requires registry detection — use winarm_cpufeatures::is_aarch64_feature_detected_full!() instead"))
-    };
-    // ── Catch-all — unknown feature name ─────────────────────────────────
+    // Unknown name on Windows aarch64 — winarm doesn't know about it.
+    // (On non-Windows aarch64 std would handle this; here we error so
+    // the user knows winarm needs updating to track new names.)
     ($other:literal) => {
         ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name: '",
+            "unknown aarch64 feature name '",
             $other,
-            "'",
+            "': winarm-cpufeatures does not track this name on Windows aarch64. ",
+            "If std accepts it on other targets, please file an issue to add it.",
         ))
     };
 }
 
-/// Full detection — uses `IsProcessorFeaturePresent` plus, when the
-/// `registry` Cargo feature is enabled and [`set_registry_enabled`] has
-/// been called with `true`, `HKLM\…\CentralProcessor\0\CP <hex>` registry
-/// reads on Windows ARM64. Accepts every aarch64 feature name.
+#[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected {
+    ($name:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($name)
+    };
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected {
+    ("asimd") => {
+        false
+    };
+    ("fp") => {
+        false
+    };
+    ("fp16") => {
+        false
+    };
+    ("fhm") => {
+        false
+    };
+    ("fcma") => {
+        false
+    };
+    ("bf16") => {
+        false
+    };
+    ("i8mm") => {
+        false
+    };
+    ("jsconv") => {
+        false
+    };
+    ("frintts") => {
+        false
+    };
+    ("rdm") => {
+        false
+    };
+    ("dotprod") => {
+        false
+    };
+    ("aes") => {
+        false
+    };
+    ("pmull") => {
+        false
+    };
+    ("sha2") => {
+        false
+    };
+    ("sha3") => {
+        false
+    };
+    ("sm4") => {
+        false
+    };
+    ("crc") => {
+        false
+    };
+    ("lse") => {
+        false
+    };
+    ("lse2") => {
+        false
+    };
+    ("lse128") => {
+        false
+    };
+    ("rcpc") => {
+        false
+    };
+    ("rcpc2") => {
+        false
+    };
+    ("rcpc3") => {
+        false
+    };
+    ("paca") => {
+        false
+    };
+    ("pacg") => {
+        false
+    };
+    ("pauth-lr") => {
+        false
+    };
+    ("bti") => {
+        false
+    };
+    ("dpb") => {
+        false
+    };
+    ("dpb2") => {
+        false
+    };
+    ("mte") => {
+        false
+    };
+    ("mops") => {
+        false
+    };
+    ("dit") => {
+        false
+    };
+    ("sb") => {
+        false
+    };
+    ("ssbs") => {
+        false
+    };
+    ("flagm") => {
+        false
+    };
+    ("flagm2") => {
+        false
+    };
+    ("rand") => {
+        false
+    };
+    ("tme") => {
+        false
+    };
+    ("ecv") => {
+        false
+    };
+    ("cssc") => {
+        false
+    };
+    ("wfxt") => {
+        false
+    };
+    ("hbc") => {
+        false
+    };
+    ("lut") => {
+        false
+    };
+    ("faminmax") => {
+        false
+    };
+    ("fp8") => {
+        false
+    };
+    ("fp8dot2") => {
+        false
+    };
+    ("fp8dot4") => {
+        false
+    };
+    ("fp8fma") => {
+        false
+    };
+    ("fpmr") => {
+        false
+    };
+    ("sve") => {
+        false
+    };
+    ("sve2") => {
+        false
+    };
+    ("sve2p1") => {
+        false
+    };
+    ("sve2-aes") => {
+        false
+    };
+    ("sve2-bitperm") => {
+        false
+    };
+    ("sve2-sha3") => {
+        false
+    };
+    ("sve2-sm4") => {
+        false
+    };
+    ("sve-b16b16") => {
+        false
+    };
+    ("f32mm") => {
+        false
+    };
+    ("f64mm") => {
+        false
+    };
+    ("sme") => {
+        false
+    };
+    ("sme2") => {
+        false
+    };
+    ("sme2p1") => {
+        false
+    };
+    ("sme-b16b16") => {
+        false
+    };
+    ("sme-f16f16") => {
+        false
+    };
+    ("sme-f64f64") => {
+        false
+    };
+    ("sme-f8f16") => {
+        false
+    };
+    ("sme-f8f32") => {
+        false
+    };
+    ("sme-fa64") => {
+        false
+    };
+    ("sme-i16i64") => {
+        false
+    };
+    ("sme-lutv2") => {
+        false
+    };
+    ("ssve-fp8dot2") => {
+        false
+    };
+    ("ssve-fp8dot4") => {
+        false
+    };
+    ("ssve-fp8fma") => {
+        false
+    };
+    ($other:literal) => {
+        ::core::compile_error!(::core::concat!(
+            "unknown aarch64 feature name '",
+            $other,
+            "': winarm-cpufeatures does not track this name. ",
+            "If std accepts it on aarch64 targets, please file an issue to add it.",
+        ))
+    };
+}
+
+/// Full detection macro.
 ///
-/// First call from a process triggers one registry key open + ~10 value
-/// reads. Subsequent calls hit the cached bitset.
+/// **On Windows ARM64** with the `registry` Cargo feature enabled,
+/// reads the IPFP + registry cache — covers the ~30 stdarch names
+/// `IsProcessorFeaturePresent` can't see. Without the `registry`
+/// feature (or with [`set_registry_enabled(false)`] called at startup),
+/// behaves identically to [`is_aarch64_feature_detected!`].
 ///
-/// **Compile error** if `$name` is not a known aarch64 feature name.
-///
-/// On non-Windows-ARM targets, this consults the per-process cache that
-/// was populated by `std::arch::is_aarch64_feature_detected!` on first
-/// access.
+/// **On every other target**, behaves identically to
+/// [`is_aarch64_feature_detected!`].
 ///
 /// ```no_run
-/// if winarm_cpufeatures::is_aarch64_feature_detected_full!("rdm") {
-///     // Rounding Doubling Multiply Accumulate
+/// if winarm_cpufeatures::is_aarch64_feature_detected_full!("paca") {
+///     // Pointer Auth address-key
 /// }
 /// ```
+///
+/// [`set_registry_enabled(false)`]: set_registry_enabled
+#[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_full {
     ("asimd") => {
@@ -617,12 +863,252 @@ macro_rules! is_aarch64_feature_detected_full {
     ("ssve-fp8fma") => {
         $crate::is_detected_full($crate::Feature::SsveFp8Fma)
     };
-    // ── Catch-all — unknown feature name ─────────────────────────────────
     ($other:literal) => {
         ::core::compile_error!(::core::concat!(
-            "unknown aarch64 feature name: '",
+            "unknown aarch64 feature name '",
             $other,
-            "'",
+            "': winarm-cpufeatures does not track this name on Windows aarch64. ",
+            "If std accepts it on other targets, please file an issue to add it.",
+        ))
+    };
+}
+
+#[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected_full {
+    ($name:tt) => {
+        ::std::arch::is_aarch64_feature_detected!($name)
+    };
+}
+
+#[cfg(not(target_arch = "aarch64"))]
+#[macro_export]
+macro_rules! is_aarch64_feature_detected_full {
+    ("asimd") => {
+        false
+    };
+    ("fp") => {
+        false
+    };
+    ("fp16") => {
+        false
+    };
+    ("fhm") => {
+        false
+    };
+    ("fcma") => {
+        false
+    };
+    ("bf16") => {
+        false
+    };
+    ("i8mm") => {
+        false
+    };
+    ("jsconv") => {
+        false
+    };
+    ("frintts") => {
+        false
+    };
+    ("rdm") => {
+        false
+    };
+    ("dotprod") => {
+        false
+    };
+    ("aes") => {
+        false
+    };
+    ("pmull") => {
+        false
+    };
+    ("sha2") => {
+        false
+    };
+    ("sha3") => {
+        false
+    };
+    ("sm4") => {
+        false
+    };
+    ("crc") => {
+        false
+    };
+    ("lse") => {
+        false
+    };
+    ("lse2") => {
+        false
+    };
+    ("lse128") => {
+        false
+    };
+    ("rcpc") => {
+        false
+    };
+    ("rcpc2") => {
+        false
+    };
+    ("rcpc3") => {
+        false
+    };
+    ("paca") => {
+        false
+    };
+    ("pacg") => {
+        false
+    };
+    ("pauth-lr") => {
+        false
+    };
+    ("bti") => {
+        false
+    };
+    ("dpb") => {
+        false
+    };
+    ("dpb2") => {
+        false
+    };
+    ("mte") => {
+        false
+    };
+    ("mops") => {
+        false
+    };
+    ("dit") => {
+        false
+    };
+    ("sb") => {
+        false
+    };
+    ("ssbs") => {
+        false
+    };
+    ("flagm") => {
+        false
+    };
+    ("flagm2") => {
+        false
+    };
+    ("rand") => {
+        false
+    };
+    ("tme") => {
+        false
+    };
+    ("ecv") => {
+        false
+    };
+    ("cssc") => {
+        false
+    };
+    ("wfxt") => {
+        false
+    };
+    ("hbc") => {
+        false
+    };
+    ("lut") => {
+        false
+    };
+    ("faminmax") => {
+        false
+    };
+    ("fp8") => {
+        false
+    };
+    ("fp8dot2") => {
+        false
+    };
+    ("fp8dot4") => {
+        false
+    };
+    ("fp8fma") => {
+        false
+    };
+    ("fpmr") => {
+        false
+    };
+    ("sve") => {
+        false
+    };
+    ("sve2") => {
+        false
+    };
+    ("sve2p1") => {
+        false
+    };
+    ("sve2-aes") => {
+        false
+    };
+    ("sve2-bitperm") => {
+        false
+    };
+    ("sve2-sha3") => {
+        false
+    };
+    ("sve2-sm4") => {
+        false
+    };
+    ("sve-b16b16") => {
+        false
+    };
+    ("f32mm") => {
+        false
+    };
+    ("f64mm") => {
+        false
+    };
+    ("sme") => {
+        false
+    };
+    ("sme2") => {
+        false
+    };
+    ("sme2p1") => {
+        false
+    };
+    ("sme-b16b16") => {
+        false
+    };
+    ("sme-f16f16") => {
+        false
+    };
+    ("sme-f64f64") => {
+        false
+    };
+    ("sme-f8f16") => {
+        false
+    };
+    ("sme-f8f32") => {
+        false
+    };
+    ("sme-fa64") => {
+        false
+    };
+    ("sme-i16i64") => {
+        false
+    };
+    ("sme-lutv2") => {
+        false
+    };
+    ("ssve-fp8dot2") => {
+        false
+    };
+    ("ssve-fp8dot4") => {
+        false
+    };
+    ("ssve-fp8fma") => {
+        false
+    };
+    ($other:literal) => {
+        ::core::compile_error!(::core::concat!(
+            "unknown aarch64 feature name '",
+            $other,
+            "': winarm-cpufeatures does not track this name. ",
+            "If std accepts it on aarch64 targets, please file an issue to add it.",
         ))
     };
 }
