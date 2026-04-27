@@ -83,18 +83,15 @@ jobs:
   # Cross-compile sanity — confirm the crate builds for the targets archmage
   # cares about, even if we can't run on them here.
   # ────────────────────────────────────────────────────────────────────────
-  cross:
+  cross-build:
     name: Cross-build (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         target:
-          - i686-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
           - aarch64-pc-windows-msvc
           - aarch64-apple-darwin
-          - armv7-unknown-linux-gnueabihf
           - wasm32-unknown-unknown
     steps:
       - uses: actions/checkout@v6
@@ -103,6 +100,78 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --target ${{ matrix.target }}
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Cross-arch testing under QEMU. Real test execution on i686 + armv7
+  # exercises the non-aarch64 stub (returns false for every name). The
+  # aarch64-linux entry is redundant with native ubuntu-24.04-arm but
+  # confirms cross-toolchain parity. Catches issues that `cargo build
+  # --target` doesn't — e.g. cfg-gated test code that compiles but
+  # mis-asserts at runtime.
+  # ────────────────────────────────────────────────────────────────────────
+  cross-test:
+    name: Cross-test (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/install-action@cross
+      - uses: Swatinem/rust-cache@v2
+      - name: Test default features
+        run: cross test --target ${{ matrix.target }}
+      - name: Test --features registry
+        run: cross test --features registry --target ${{ matrix.target }}
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Feature-flag combinations. Catches dead-code / missing-cfg-gate bugs
+  # that only surface when a specific feature subset is selected. One
+  # Linux-x64 runner is enough; native ARM coverage stays in test-aarch64.
+  # ────────────────────────────────────────────────────────────────────────
+  feature-combos:
+    name: Features (${{ matrix.combo.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - { name: "no-default", args: "--no-default-features" }
+          - { name: "default",    args: "" }
+          - { name: "registry",   args: "--features registry" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build ${{ matrix.combo.args }}
+      - run: cargo test ${{ matrix.combo.args }}
+      - run: cargo clippy --all-targets ${{ matrix.combo.args }} -- -D warnings
+
+  # ────────────────────────────────────────────────────────────────────────
+  # Nightly-only feature combinations. Exercises the
+  # `nightly-stdarch` paths that need rustc nightly to compile.
+  # ────────────────────────────────────────────────────────────────────────
+  feature-combos-nightly:
+    name: Features nightly (${{ matrix.combo.name }})
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - { name: "nightly-stdarch",          args: "--features nightly-stdarch" }
+          - { name: "registry+nightly-stdarch", args: "--features registry,nightly-stdarch" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build ${{ matrix.combo.args }}
+      - run: cargo test ${{ matrix.combo.args }}
 
   # ────────────────────────────────────────────────────────────────────────
   # MSRV — every supported platform.
