@@ -24,9 +24,9 @@
 //! | `CP 403A`   | ID_AA64MMFR2_EL1      | memory model features               |
 //! | `CP 403B`   | ID_AA64MMFR3_EL1      | memory model features               |
 
-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
-use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_QWORD, RegCloseKey, RegGetValueW, RegOpenKeyExW,
+use super::sys::{
+    ERROR_SUCCESS, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_QWORD, RegCloseKey, RegGetValueW,
+    RegOpenKeyExW,
 };
 
 use crate::cache::Features;

@@ -35,6 +35,11 @@ results) non-aarch64 hosts.
   consulted by default — sandboxed callers can opt out with
   `set_registry_enabled(false)`. Covers ~30 stdarch feature names IPFP
   cannot reach.
+- **Zero deps.** Win32 entry points (`IsProcessorFeaturePresent`, plus
+  `RegOpenKeyExW` / `RegGetValueW` / `RegCloseKey` under `registry`)
+  are declared inline in `src/windows/sys.rs` instead of pulling in
+  `windows-sys`. Saves ~1.5s of clean-build time on Windows aarch64
+  and keeps the dependency graph trivial to audit.
 - **Std passthrough (non-Windows aarch64).** Macros expand directly to
   `std::arch::is_aarch64_feature_detected!`. No added cache layer; std's
   internal HWCAP cache amortizes. Future stdarch additions Just Work

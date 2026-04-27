@@ -14,13 +14,10 @@ categories = ["hardware-support", "no-std", "os::windows-apis"]
 
 [lib]
 
-[target.'cfg(all(target_os = "windows", target_arch = "aarch64"))'.dependencies]
-windows-sys = { version = "0.61.2", features = [
-    "Win32_Foundation",
-    "Win32_System_Registry",
-    "Win32_System_SystemInformation",
-    "Win32_System_Threading",
-] }
+# Zero deps. The handful of Win32 entry points we need are declared
+# inline in `src/windows/sys.rs` — replacing `windows-sys` saves ~3s of
+# clean-build time on Windows aarch64 and keeps this crate trivial to
+# audit.
 
 [features]
 default = []

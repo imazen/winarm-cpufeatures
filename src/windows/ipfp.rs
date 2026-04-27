@@ -19,7 +19,7 @@
 use crate::cache::Features;
 use crate::features::Feature;
 
-use windows_sys::Win32::System::Threading::IsProcessorFeaturePresent;
+use super::sys::IsProcessorFeaturePresent;
 
 // PF_ARM_* numeric values verbatim from winnt.h (Windows SDK 26100).
 // Comments mark the SDK series each batch first appeared in.
@@ -76,13 +76,13 @@ const PF_ARM_SME_I16I64_INSTRUCTIONS_AVAILABLE: u32 = 86;
 const PF_ARM_SME_LUTv2_INSTRUCTIONS_AVAILABLE: u32 = 87;
 const PF_ARM_SME_FA64_INSTRUCTIONS_AVAILABLE: u32 = 88;
 
-/// Safe wrapper around `IsProcessorFeaturePresent`. The only FFI call site.
-#[expect(unsafe_code, reason = "single Win32 FFI entry point")]
+/// Wrapper around `IsProcessorFeaturePresent`. The only FFI call site.
+/// The extern fn is declared `safe` (no caller-side safety contract:
+/// just a DWORD argument by value, no pointers), so calling it doesn't
+/// need an `unsafe` block.
 #[inline]
 fn present(feature: u32) -> bool {
-    // SAFETY: IsProcessorFeaturePresent takes a DWORD by value, returns
-    // a BOOL. No pointers, no out-parameters, no reentrancy. Pure call.
-    unsafe { IsProcessorFeaturePresent(feature) != 0 }
+    IsProcessorFeaturePresent(feature) != 0
 }
 
 /// Fill `f` with every feature IPFP can directly (or by sound architectural
