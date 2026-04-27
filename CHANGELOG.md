@@ -1,67 +1,55 @@
 # Changelog
 
-## [0.2.0] — 2026-04-25
+## [0.1.0] — 2026-04-26
 
-### Added
+Initial release.
 
-- Wire every `PF_ARM_*` constant defined in Windows SDK 10.0.26100.0
-  (`winnt.h:14202-14272`). New IPFP-detectable features: `lse2`, `sha3`,
-  `fp16`, `bf16`, `i8mm`, `f32mm`, `f64mm`, `sme`, `sme2`, `sme2p1`,
-  `sme_b16b16`, `sme_f16f16`, `sme_f64f64`, `sme_f8f16`, `sme_f8f32`,
-  `sme_fa64`, `sme_i16i64`, `sme_lutv2`, `ssve_fp8dot2`, `ssve_fp8dot4`,
-  `ssve_fp8fma`. (~20 features moved from `Registry`-only to `Both`/`Ipfp`.)
-- DP/LSE → RDM architectural inference. Microsoft has never defined a
-  `PF_ARM_RDM_*` constant; we follow the rule from ARM ARM K.a §D17.2.91
-  and `dotnet/runtime#109493` (shipped in .NET 10 GA at
-  `src/native/minipal/cpufeatures.c:549-563`). Result: `detected!("rdm")`
-  now works without the registry layer.
-- New Cargo feature `registry` (off by default). Enables the
-  `HKLM\…\CentralProcessor\0\CP <hex>` ID-register decoder for the ~30
-  stdarch feature names IPFP cannot reach. Same shape as before, just
-  opt-in.
-- **Double opt-in for the registry layer**: even when the Cargo feature
-  is enabled (whether by your own crate or any transitive dep — Cargo
-  features union across the dependency graph), the registry is *not
-  consulted* until `set_registry_enabled(true)` is called. The registry
-  FFI is linked but stays dormant. Defense in depth against transitive
-  feature enablement.
-- New public functions: `set_registry_enabled(bool)` and
-  `is_registry_enabled() -> bool`. Both are no-ops on builds without the
-  `registry` feature, kept for API stability.
-- Documentation: `contrib/std_detect_patch/` contains a draft
-  `library/std_detect/src/detect/os/windows/aarch64.rs` replacement plus
-  a `dotnet10_arm_detection_reference.md` source-pinned to .NET 10 GA
-  (`v10.0.0`, commit `60629d14`) showing the reference implementation.
+### What this crate does
 
-### Changed
+Drop-in `detected!` / `detected_full!` macros that fill the
+Windows-on-ARM gap in `std::arch::is_aarch64_feature_detected!`.
 
-- **Default features no longer include the registry pass.** Migration:
-  add `features = ["registry"]` to your `Cargo.toml` if you depend on any
-  of the registry-only feature names being detected. Without it,
-  `detected_full!` returns the same answers as `detected!`.
-- `Cargo.toml` description now reflects the IPFP-first design.
-- `Feature::Rdm`, `Feature::Sha3`, `Feature::Fp16`, `Feature::Bf16`,
-  `Feature::I8mm`, `Feature::Lse2`, `Feature::Sme` reclassified
-  `DetectionMethod::Registry` → `DetectionMethod::Both`. Sme2/Sme2p1/all
-  `Sme*` and `SsveFp8*` reclassified to `DetectionMethod::Ipfp`.
+### Detection layers
 
-### Fixed
+- **IPFP layer (always on).** Wires every `PF_ARM_*` constant defined in
+  Windows SDK 10.0.26100.0 (`winnt.h:14202-14272`). Covers the SVE/SME
+  family added in Windows 11 24H2.
+- **DP/LSE → RDM architectural inference.** Microsoft has never defined a
+  `PF_ARM_RDM_*` constant; we follow ARM ARM K.a §D17.2.91 and
+  `dotnet/runtime#109493` (shipped in .NET 10 GA at
+  `src/native/minipal/cpufeatures.c:549-563`).
+- **Registry layer (opt-in, double-gated).** Behind the `registry` Cargo
+  feature *and* a runtime `set_registry_enabled(true)` call. Reads the
+  `HKLM\…\CentralProcessor\0\CP <hex>` `ID_AA64*_EL1` snapshots Windows
+  publishes — covers ~30 stdarch feature names IPFP cannot reach.
+  Defense-in-depth against transitive Cargo-feature unification.
+- **MIDR_EL1 parsing** with implementer/variant/part/revision decode.
 
-- `#![cfg_attr(winarm_rustc_nightly, feature(stdarch_aarch64_feature_detection))]`
-  is now also gated on `target_arch = "aarch64"`, so the crate builds on
-  nightly toolchains targeting non-aarch64 hosts (the previous predicate
-  triggered `unknown feature 'stdarch_aarch64_feature_detection'` errors
-  on x86_64 nightly).
+### Compile-time design
 
-## [0.1.0] — initial release
+- `detected!` / `detected_full!` use direct `macro_rules!` arm dispatch.
+  Each call site expands to a single function call — no const-eval, no
+  per-site string-compare lookup.
+- No build script. Nightly opt-in for the 32 unstable stdarch feature
+  names is via the explicit `nightly-stdarch` Cargo feature; users on
+  stable get the 41 stable names without paying for build-script overhead.
 
-### Added
-- Initial crate scaffold: `Features`, `Feature` enum, `detected!` macro
-- Windows-on-ARM detection backend:
-  - `IsProcessorFeaturePresent` probes for the `PF_ARM_*` constants known
-    at the time
-  - Registry `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`
-    reader for AArch64 ID-register snapshots
-  - MIDR_EL1 parsing with implementer/variant/part/revision decode
-- Non-Windows platforms: all detection delegates to
-  `std::arch::is_aarch64_feature_detected!`
+### Cargo features
+
+- `registry` — link the `HKLM\…\CentralProcessor\0\CP <hex>` registry
+  decoder. Off by default. Even when enabled, the registry path is *not
+  consulted* until `set_registry_enabled(true)` is called.
+- `nightly-stdarch` — opt into
+  `#![feature(stdarch_aarch64_feature_detection)]` so non-Windows aarch64
+  targets can detect the 32 unstable stdarch names. Requires nightly rustc.
+- `nightly-sve` — enable the SVE execution test (`tests/sve_execution.rs`).
+
+### Public API
+
+- `detected!(name)` / `detected_full!(name)` macros.
+- `Features` / `Feature` / `DetectionMethod` / `FEATURE_COUNT`.
+- `is_detected(Feature) -> bool`, `is_detected_full(Feature) -> bool`.
+- `set_registry_enabled(bool)`, `is_registry_enabled() -> bool` (no-ops
+  on builds without the `registry` feature).
+- Non-Windows platforms: detection delegates to
+  `std::arch::is_aarch64_feature_detected!`.
