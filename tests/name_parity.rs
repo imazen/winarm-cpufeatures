@@ -1,10 +1,9 @@
 //! Cross-platform name-parity test.
 //!
-//! Both `is_aarch64_feature_detected_fast!` and `is_aarch64_feature_detected_full!`
-//! must accept every documented feature name on every supported target.
-//! The CI matrix (windows-11-arm, ubuntu-24.04-arm, macos-14, plus the
-//! non-aarch64 runners) catches any drift between the cfg-gated dispatch
-//! paths.
+//! `is_aarch64_feature_detected_fast!` must accept every documented
+//! feature name on every supported target. The CI matrix (windows-11-arm,
+//! ubuntu-24.04-arm, macos-14, plus the non-aarch64 runners) catches any
+//! drift between the cfg-gated dispatch paths.
 //!
 //! If a name in `features.rs` is renamed without a corresponding macro
 //! arm update, or if the Windows-aarch64 enum dispatch falls out of sync
@@ -13,14 +12,14 @@
 
 #![allow(unused_imports)]
 
-use winarm_cpufeatures::{is_aarch64_feature_detected_fast, is_aarch64_feature_detected_full};
+use winarm_cpufeatures::{Feature, Features, is_aarch64_feature_detected_fast};
 
-/// Per-target list of feature names that compile through both winarm
-/// macros. Calls `$cb!(name)` once per name.
+/// Per-target list of feature names that compile through the winarm
+/// fast macro. Calls `$cb!(name)` once per name.
 ///
 /// - **Windows aarch64**: all 73 names (cache-based dispatch handles
 ///   stable + unstable identically).
-/// - **non-Windows aarch64**: 41 stable names (the macros passthrough
+/// - **non-Windows aarch64**: 41 stable names (the macro passes through
 ///   to std, which on stable Rust rejects the 32 unstable names).
 /// - **non-aarch64**: all 73 names (single `:literal` arm accepts
 ///   everything, returns `false`).
@@ -69,7 +68,7 @@ macro_rules! for_every_supported_name {
         $cb!("f32mm");
         $cb!("f64mm");
         // Unstable-on-stable-Rust names — only on targets where they
-        // compile through our macros without a user-side feature gate.
+        // compile through our macro without a user-side feature gate.
         // On non-Windows aarch64 they passthrough to std which errors
         // on stable; skip them there.
         for_every_unstable_name_when_supported!($cb);
@@ -183,56 +182,46 @@ fn fast_accepts_all() {
     for_every_supported_name!(probe);
 }
 
+/// Every documented name parses through `Feature::from_name` and the
+/// `Features::current_full` snapshot exposes it via `.has`.
 #[test]
-fn full_accepts_all() {
+fn full_snapshot_covers_every_name() {
+    let cpu = Features::current_full();
     macro_rules! probe {
-        ($n:tt) => {
-            let _ = is_aarch64_feature_detected_full!($n);
-        };
+        ($n:tt) => {{
+            let f = Feature::all()
+                .find(|f| f.name() == $n)
+                .unwrap_or_else(|| panic!("unknown name `{}`", $n));
+            let _ = cpu.has(f);
+        }};
     }
     for_every_supported_name!(probe);
 }
 
-/// On non-Windows targets there's no registry layer, so fast and full
-/// must produce identical answers for every name. (On Windows aarch64
-/// they legitimately diverge for Registry-classified names when the
-/// `registry` Cargo feature is on.)
-#[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
-#[test]
-fn fast_and_full_agree_on_non_windows() {
-    macro_rules! check {
-        ($n:tt) => {
-            assert_eq!(
-                is_aarch64_feature_detected_fast!($n),
-                is_aarch64_feature_detected_full!($n),
-                "fast/full disagree for `{}` — should be identical on this target",
-                $n,
-            );
-        };
-    }
-    for_every_supported_name!(check);
-}
-
-/// On Windows aarch64, winarm's detection must be a *strict superset*
-/// of std's: any feature std reports present, winarm must also report
-/// present. Holds today (we wire more PF_ARM_* than std does on
-/// Windows) and continues to hold once
+/// On Windows aarch64, winarm's full detection must be a *strict
+/// superset* of std's: any feature std reports present, winarm must
+/// also report present. Holds today (we wire more PF_ARM_* than std
+/// does on Windows) and continues to hold once
 /// [rust-lang/rust#155856](https://github.com/rust-lang/rust/pull/155856)
 /// lands stable Windows-aarch64 IPFP coverage in std (we and std then
 /// agree on the names that PR adds, and we still cover more via
 /// registry decoding).
 ///
 /// If this test ever fails, it means std grew Windows IPFP coverage
-/// for a feature we don't track — winarm needs an enum entry and
-/// macro arm for that name.
+/// for a feature we don't track — winarm needs an enum entry for that
+/// name.
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 #[test]
 fn winarm_is_superset_of_std_on_windows() {
+    let cpu = Features::current_full();
     macro_rules! check {
         ($n:tt) => {
             if std::arch::is_aarch64_feature_detected!($n) {
+                let f = Feature::all()
+                    .find(|f| f.name() == $n)
+                    .unwrap_or_else(|| panic!("unknown name `{}`", $n));
                 assert!(
-                    is_aarch64_feature_detected_full!($n),
+                    cpu.has(f),
                     "std reports `{}` present on this Windows ARM64 host but winarm doesn't",
                     $n,
                 );
@@ -247,19 +236,23 @@ fn winarm_is_superset_of_std_on_windows() {
 #[cfg(not(target_arch = "aarch64"))]
 #[test]
 fn non_aarch64_always_false() {
+    let cpu = Features::current_full();
     macro_rules! check {
-        ($n:tt) => {
+        ($n:tt) => {{
             assert!(
                 !is_aarch64_feature_detected_fast!($n),
                 "expected `{}` to be false on non-aarch64",
                 $n,
             );
+            let f = Feature::all()
+                .find(|f| f.name() == $n)
+                .unwrap_or_else(|| panic!("unknown name `{}`", $n));
             assert!(
-                !is_aarch64_feature_detected_full!($n),
-                "expected `{}` to be false on non-aarch64 (full)",
+                !cpu.has(f),
+                "expected `{}` to be false on non-aarch64 (snapshot)",
                 $n,
             );
-        };
+        }};
     }
     for_every_supported_name!(check);
 }

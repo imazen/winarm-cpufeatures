@@ -88,9 +88,12 @@ that PR lands stable.
 
 ### Public API (docs-visible)
 
-- `is_aarch64_feature_detected_fast!(name)` — fast detection.
-- `is_aarch64_feature_detected_full!(name)` — full detection (Windows
-  aarch64 with `registry` adds registry-decoded features).
+- `is_aarch64_feature_detected_fast!(name)` — fast (IPFP-only)
+  single-feature check; matches std's behavior on Windows.
+- `Features::current_full()` — full snapshot. On Windows aarch64 with
+  `registry`, includes registry-decoded features that IPFP can't see.
+  One snapshot, then any number of `.has(Feature::*)` bit tests —
+  better codegen for multi-feature checks.
 - `Features` snapshot struct: `EMPTY`, `current()`, `current_full()`,
   `has(Feature)`, `iter()`.
 - `Feature` enum (73 variants), with `name()` and `all()`.

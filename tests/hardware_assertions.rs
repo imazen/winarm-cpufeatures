@@ -16,20 +16,29 @@
 
 #![cfg(target_arch = "aarch64")]
 
-use winarm_cpufeatures::{is_aarch64_feature_detected_full, set_registry_enabled};
+use winarm_cpufeatures::{Feature, Features, set_registry_enabled};
 
 /// Authorise the registry detection layer once per test process.
 ///
 /// Without this, the `registry` Cargo feature is compiled in but the
-/// runtime gate stays off — and `is_aarch64_feature_detected_full!` returns IPFP-only
-/// answers, causing every registry-only feature (sm4, paca, dpb*, flagm*,
-/// dit, sb, ssbs, rand, …) to read `false`. Each ignored hardware test
-/// calls this at entry. Idempotent; uses `Once` to avoid repeated cache
-/// invalidation under parallel execution.
-fn setup() {
+/// runtime gate stays off — and `Features::current_full()` returns
+/// IPFP-only answers, causing every registry-only feature (sm4, paca,
+/// dpb*, flagm*, dit, sb, ssbs, rand, …) to read `false`. Each ignored
+/// hardware test calls this at entry. Idempotent; uses `Once` to avoid
+/// repeated cache invalidation under parallel execution.
+fn setup() -> Features {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| set_registry_enabled(true));
+    Features::current_full()
+}
+
+/// Look up a feature by stdarch name. Panics on unknown names so a typo
+/// in the expected-list arrays surfaces immediately.
+fn lookup(name: &str) -> Feature {
+    Feature::all()
+        .find(|f| f.name() == name)
+        .unwrap_or_else(|| panic!("unhandled feature in hardware_assertions: {name}"))
 }
 
 /// Neoverse N2 (Armv9.0-A) as shipped in Azure Cobalt 100, Graviton 3, and
@@ -40,7 +49,7 @@ fn setup() {
 #[test]
 #[ignore = "requires Neoverse N2 / Cobalt 100 — `cargo test --ignored neoverse_n2`"]
 fn neoverse_n2() {
-    setup();
+    let cpu = setup();
     // ── Must be present ─────────────────────────────────────────────────
     for f in [
         "asimd",
@@ -76,8 +85,8 @@ fn neoverse_n2() {
         "sve2-sm4",
     ] {
         assert!(
-            dispatch(f),
-            "Neoverse N2 must have feature `{f}` but is_aarch64_feature_detected_full said no"
+            cpu.has(lookup(f)),
+            "Neoverse N2 must have feature `{f}` but Features::current_full said no"
         );
     }
 
@@ -98,8 +107,8 @@ fn neoverse_n2() {
         "rand",
     ] {
         assert!(
-            !dispatch(f),
-            "Neoverse N2 must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Neoverse N2 must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
@@ -110,7 +119,7 @@ fn neoverse_n2() {
 #[test]
 #[ignore = "requires Neoverse V2 — `cargo test --ignored neoverse_v2`"]
 fn neoverse_v2() {
-    setup();
+    let cpu = setup();
     // Superset of N2's positives, plus:
     for f in [
         "asimd",
@@ -147,16 +156,16 @@ fn neoverse_v2() {
         "sve2-aes",
     ] {
         assert!(
-            dispatch(f),
-            "Neoverse V2 must have feature `{f}` but is_aarch64_feature_detected_full said no"
+            cpu.has(lookup(f)),
+            "Neoverse V2 must have feature `{f}` but Features::current_full said no"
         );
     }
 
     // Still no SME on V2 (that's V3+).
     for f in ["sme", "sme2", "sme2p1", "mte"] {
         assert!(
-            !dispatch(f),
-            "Neoverse V2 must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Neoverse V2 must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
@@ -170,7 +179,7 @@ fn neoverse_v2() {
 #[test]
 #[ignore = "requires Snapdragon X (Oryon) — `cargo test --ignored snapdragon_x`"]
 fn snapdragon_x() {
-    setup();
+    let cpu = setup();
     // FEAT_MOPS and FEAT_WFxT are optional in ARMv8.7 (only mandated at v8.8);
     // Oryon does not implement them — verified on a Yoga Slim 7x (X1E, MIDR
     // impl=0x51 var=0x2 part=0x001) where ID_AA64ISAR2_EL1 reports MOPS=0,
@@ -181,16 +190,16 @@ fn snapdragon_x() {
         "paca", "pacg", "dpb", "dpb2", "flagm", "flagm2", "rand", "sb", "ssbs",
     ] {
         assert!(
-            dispatch(f),
-            "Snapdragon X (Oryon) must have feature `{f}` but is_aarch64_feature_detected_full said no"
+            cpu.has(lookup(f)),
+            "Snapdragon X (Oryon) must have feature `{f}` but Features::current_full said no"
         );
     }
 
     // Oryon explicitly omits SVE and MTE.
     for f in ["sve", "sve2", "sme", "mte"] {
         assert!(
-            !dispatch(f),
-            "Snapdragon X (Oryon) must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
+            !cpu.has(lookup(f)),
+            "Snapdragon X (Oryon) must NOT have feature `{f}` but Features::current_full said yes"
         );
     }
 }
@@ -210,7 +219,7 @@ fn snapdragon_x() {
 #[test]
 #[ignore = "requires Qualcomm SC8280XP — `cargo test --ignored sc8280xp`"]
 fn sc8280xp() {
-    setup();
+    let cpu = setup();
     // ── Must be present (stable stdarch names) ──────────────────────────
     for f in [
         "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4", "lse", "lse2", "rcpc",
@@ -218,8 +227,8 @@ fn sc8280xp() {
         "paca", "pacg", "dpb", "dpb2", "flagm", "rand", "sb", "ssbs",
     ] {
         assert!(
-            dispatch(f),
-            "SC8280XP must have feature `{f}` but is_aarch64_feature_detected_full said no"
+            cpu.has(lookup(f)),
+            "SC8280XP must have feature `{f}` but Features::current_full said no"
         );
     }
 
@@ -228,65 +237,8 @@ fn sc8280xp() {
         "sve", "sve2", "sme", "sme2", "mte", "bti", "lse128", "rcpc3", "mops", "wfxt",
     ] {
         assert!(
-            !dispatch(f),
-            "SC8280XP must NOT have feature `{f}` but is_aarch64_feature_detected_full said yes"
+            !cpu.has(lookup(f)),
+            "SC8280XP must NOT have feature `{f}` but Features::current_full said yes"
         );
-    }
-}
-
-/// is_aarch64_feature_detected_full! takes a literal, but these tests iterate over `&str`. Route
-/// each name through a match so the macro sees a literal at each site.
-fn dispatch(name: &str) -> bool {
-    match name {
-        "asimd" => is_aarch64_feature_detected_full!("asimd"),
-        "fp" => is_aarch64_feature_detected_full!("fp"),
-        "fp16" => is_aarch64_feature_detected_full!("fp16"),
-        "fhm" => is_aarch64_feature_detected_full!("fhm"),
-        "fcma" => is_aarch64_feature_detected_full!("fcma"),
-        "bf16" => is_aarch64_feature_detected_full!("bf16"),
-        "i8mm" => is_aarch64_feature_detected_full!("i8mm"),
-        "jsconv" => is_aarch64_feature_detected_full!("jsconv"),
-        "frintts" => is_aarch64_feature_detected_full!("frintts"),
-        "rdm" => is_aarch64_feature_detected_full!("rdm"),
-        "dotprod" => is_aarch64_feature_detected_full!("dotprod"),
-        "aes" => is_aarch64_feature_detected_full!("aes"),
-        "pmull" => is_aarch64_feature_detected_full!("pmull"),
-        "sha2" => is_aarch64_feature_detected_full!("sha2"),
-        "sha3" => is_aarch64_feature_detected_full!("sha3"),
-        "sm4" => is_aarch64_feature_detected_full!("sm4"),
-        "crc" => is_aarch64_feature_detected_full!("crc"),
-        "lse" => is_aarch64_feature_detected_full!("lse"),
-        "lse2" => is_aarch64_feature_detected_full!("lse2"),
-        "lse128" => is_aarch64_feature_detected_full!("lse128"),
-        "rcpc" => is_aarch64_feature_detected_full!("rcpc"),
-        "rcpc2" => is_aarch64_feature_detected_full!("rcpc2"),
-        "rcpc3" => is_aarch64_feature_detected_full!("rcpc3"),
-        "paca" => is_aarch64_feature_detected_full!("paca"),
-        "pacg" => is_aarch64_feature_detected_full!("pacg"),
-        "bti" => is_aarch64_feature_detected_full!("bti"),
-        "dpb" => is_aarch64_feature_detected_full!("dpb"),
-        "dpb2" => is_aarch64_feature_detected_full!("dpb2"),
-        "mte" => is_aarch64_feature_detected_full!("mte"),
-        "mops" => is_aarch64_feature_detected_full!("mops"),
-        "sb" => is_aarch64_feature_detected_full!("sb"),
-        "ssbs" => is_aarch64_feature_detected_full!("ssbs"),
-        "flagm" => is_aarch64_feature_detected_full!("flagm"),
-        "flagm2" => is_aarch64_feature_detected_full!("flagm2"),
-        "rand" => is_aarch64_feature_detected_full!("rand"),
-        "wfxt" => is_aarch64_feature_detected_full!("wfxt"),
-        "sve" => is_aarch64_feature_detected_full!("sve"),
-        "sve2" => is_aarch64_feature_detected_full!("sve2"),
-        "sve2p1" => is_aarch64_feature_detected_full!("sve2p1"),
-        "sve2-aes" => is_aarch64_feature_detected_full!("sve2-aes"),
-        "sve2-bitperm" => is_aarch64_feature_detected_full!("sve2-bitperm"),
-        "sve2-sha3" => is_aarch64_feature_detected_full!("sve2-sha3"),
-        "sve2-sm4" => is_aarch64_feature_detected_full!("sve2-sm4"),
-        "sve-b16b16" => is_aarch64_feature_detected_full!("sve-b16b16"),
-        "f32mm" => is_aarch64_feature_detected_full!("f32mm"),
-        "f64mm" => is_aarch64_feature_detected_full!("f64mm"),
-        "sme" => is_aarch64_feature_detected_full!("sme"),
-        "sme2" => is_aarch64_feature_detected_full!("sme2"),
-        "sme2p1" => is_aarch64_feature_detected_full!("sme2p1"),
-        other => panic!("unhandled feature in hardware_assertions dispatch: {other}"),
     }
 }

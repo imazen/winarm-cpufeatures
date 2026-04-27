@@ -35,7 +35,7 @@ const INIT_BIT: u64 = 1 << 63;
 /// features) is an implementation detail. Fields are visible only
 /// inside `crate::cache` so the cache machinery can publish/load words
 /// directly with `INIT_BIT` masking; every other consumer goes through
-/// type-safe [`Features::has`] / [`Features::with`] / [`Features::iter`].
+/// type-safe [`Features::has`] / [`Features::iter`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Features {
     pub(in crate::cache) lo: u64,
@@ -151,23 +151,6 @@ pub fn is_detected(feature: Feature) -> bool {
     }
 }
 
-/// Macro implementation detail: full-cache version of [`is_detected`].
-/// Identical to [`is_detected`] on every target except Windows ARM64
-/// with the `registry` Cargo feature, where it additionally consults
-/// the registry decoder when the runtime gate is on.
-#[doc(hidden)]
-#[inline]
-pub fn is_detected_full(feature: Feature) -> bool {
-    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
-    {
-        windows_cache::query_full(feature)
-    }
-    #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
-    {
-        is_detected(feature)
-    }
-}
-
 /// Per-feature dispatch to `std::arch::is_aarch64_feature_detected!` on
 /// non-Windows aarch64 targets. Only the 41 names that std accepts on
 /// stable Rust 1.85 are wired here; the 32 names std gates behind
@@ -240,8 +223,6 @@ fn stdarch_dispatch(feature: Feature) -> bool {
 /// On builds where the registry layer doesn't apply (non-Windows
 /// aarch64, or the `registry` Cargo feature off), this function is a
 /// no-op kept available for API stability.
-///
-/// [`is_aarch64_feature_detected_full!`]: crate::is_aarch64_feature_detected_full!
 #[inline]
 pub fn set_registry_enabled(enabled: bool) {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
@@ -314,24 +295,6 @@ mod windows_cache {
                 return (word >> pos) & 1 != 0;
             }
             populate_fast();
-        }
-    }
-
-    /// Single-load query against the full cache.
-    #[inline]
-    pub(super) fn query_full(feature: Feature) -> bool {
-        let bit = feature as u8;
-        let (atomic, pos) = if bit < 64 {
-            (&FULL_LO, bit)
-        } else {
-            (&FULL_HI, bit - 64)
-        };
-        loop {
-            let word = atomic.load(Ordering::Acquire);
-            if word & INIT_BIT != 0 {
-                return (word >> pos) & 1 != 0;
-            }
-            populate_full();
         }
     }
 
@@ -441,14 +404,16 @@ mod tests {
     }
 
     #[test]
-    fn full_implies_fast_for_ipfp_features() {
+    fn full_snapshot_implies_fast_for_ipfp_features() {
         use crate::features::DetectionMethod;
-        // For Ipfp-classified features, both query paths must agree.
+        // For Ipfp-classified features, fast and full must agree.
+        let fast = Features::current();
+        let full = Features::current_full();
         for f in Feature::all() {
             if f.detection_method() == DetectionMethod::Ipfp {
                 assert_eq!(
-                    is_detected(f),
-                    is_detected_full(f),
+                    fast.has(f),
+                    full.has(f),
                     "fast/full disagree for IPFP feature {}",
                     f.name()
                 );
@@ -464,16 +429,6 @@ mod tests {
             if f.detection_method() != DetectionMethod::Registry {
                 assert_eq!(snap.has(f), is_detected(f), "fast {} disagrees", f.name());
             }
-        }
-
-        let snap_full = Features::current_full();
-        for f in Feature::all() {
-            assert_eq!(
-                snap_full.has(f),
-                is_detected_full(f),
-                "full {} disagrees",
-                f.name()
-            );
         }
     }
 }

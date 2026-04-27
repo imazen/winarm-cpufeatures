@@ -51,14 +51,14 @@ if f.has(Feature::Bf16) && f.has(Feature::I8mm) {
 }
 ```
 
-## Two macros
+## Two query paths
 
-| Macro | What it reads on Windows aarch64 |
+| API | What it reads on Windows aarch64 |
 |---|---|
 | `is_aarch64_feature_detected_fast!` | IPFP-only cache. Names IPFP can't see (`paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`, `fcma`, `frintts`, `sm4`, …) silently return `false`, matching std's behavior. |
-| `is_aarch64_feature_detected_full!` | IPFP + registry cache (when `--features registry` is on). Covers the ~25 names IPFP can't reach. |
+| `Features::current_full()` | IPFP + registry cache (when `--features registry` is on). Covers the ~25 names IPFP can't reach. One snapshot, then any number of bit tests via `.has(Feature::*)`. |
 
-On non-Windows aarch64 and non-aarch64 the two macros behave identically.
+On non-Windows aarch64 and non-aarch64, `Features::current_full()` is identical to `Features::current()` (no registry layer).
 
 ## Cargo features
 

@@ -5,9 +5,9 @@
 //! detection cache; they are `pub` so callers can manage their own bitsets.
 //!
 //! Each feature has a [`DetectionMethod`] describing the cheapest backend
-//! that can confirm it on Windows-on-ARM. This drives the compile-time
-//! dispatch between [`crate::is_aarch64_feature_detected_fast!`] (fast, IPFP-only) and
-//! [`crate::is_aarch64_feature_detected_full!`] (slow, reads the registry).
+//! that can confirm it on Windows-on-ARM. This drives the dispatch
+//! between [`crate::is_aarch64_feature_detected_fast!`] (IPFP-only) and
+//! [`crate::Features::current_full`] (IPFP + registry decoder).
 
 #![allow(non_camel_case_types)]
 
