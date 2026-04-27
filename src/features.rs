@@ -27,6 +27,24 @@ pub(crate) enum DetectionMethod {
     Both,
 }
 
+/// Byte-for-byte equality, usable in `const fn` context. Stable Rust's
+/// `&str` pattern matching in const fn isn't quite there yet (needs
+/// `const_str_methods`), so we go through the byte slice directly.
+#[doc(hidden)]
+pub const fn const_bytes_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 macro_rules! features {
     ($($variant:ident = ($bit:literal, $name:literal, $method:ident)),* $(,)?) => {
         /// One AArch64 feature name as accepted by
@@ -58,13 +76,37 @@ macro_rules! features {
                 }
             }
 
-            /// Parse a stdarch feature name into a `Feature`. `None` if unrecognized.
-            #[allow(dead_code, reason = "internal-use lookup; tests exercise it")]
-            pub(crate) fn from_name(name: &str) -> Option<Self> {
-                match name {
-                    $($name => Some(Feature::$variant),)*
-                    _ => None,
-                }
+            /// Parse a stdarch feature name into a `Feature`. Returns `None`
+            /// for unrecognized names.
+            ///
+            /// `const fn`, so consumers can fold a string-literal feature
+            /// name to a `Feature` discriminant at compile time and then
+            /// drive a single [`Features::current_full`] snapshot lookup
+            /// with zero per-call name dispatch cost:
+            ///
+            /// ```
+            /// use winarm_cpufeatures::{Feature, Features};
+            ///
+            /// const SHA3: Feature = match Feature::from_name("sha3") {
+            ///     Some(f) => f,
+            ///     None => unreachable!(),
+            /// };
+            /// let _ = Features::current_full().has(SHA3);
+            /// ```
+            ///
+            /// Names use stdarch's dashed convention (`sve2-aes`,
+            /// `sme-fa64`, `pauth-lr`, `ssve-fp8dot2`, …) — same spellings
+            /// returned by [`Feature::name`].
+            ///
+            /// [`Features::current_full`]: crate::Features::current_full
+            pub const fn from_name(name: &str) -> Option<Self> {
+                let bytes = name.as_bytes();
+                $(
+                    if $crate::features::const_bytes_eq(bytes, $name.as_bytes()) {
+                        return Some(Feature::$variant);
+                    }
+                )*
+                None
             }
 
             /// Iterator over every feature. Useful for diagnostics.

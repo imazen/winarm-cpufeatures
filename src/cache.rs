@@ -151,34 +151,6 @@ pub fn is_detected(feature: Feature) -> bool {
     }
 }
 
-/// Macro implementation detail: returns whether `feature` is detected on
-/// this target via the *full* path — i.e., on Windows ARM64 with the
-/// `registry` Cargo feature enabled and `set_registry_enabled(true)`
-/// (the default), this consults the registry-backed
-/// `ID_AA64*_EL1` decoder in addition to IPFP. Users should reach for
-/// [`is_aarch64_feature_detected_full!`] or
-/// [`Features::current_full().has(feature)`].
-///
-/// [`is_aarch64_feature_detected_full!`]: crate::is_aarch64_feature_detected_full!
-/// [`Features::current_full().has(feature)`]: crate::Features::current_full
-#[doc(hidden)]
-#[inline]
-pub fn is_detected_full(feature: Feature) -> bool {
-    #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
-    {
-        windows_cache::query_full(feature)
-    }
-    #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
-    {
-        stdarch_dispatch(feature)
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        let _ = feature;
-        false
-    }
-}
-
 /// Per-feature dispatch to `std::arch::is_aarch64_feature_detected!` on
 /// non-Windows aarch64 targets. Only the 41 names that std accepts on
 /// stable Rust 1.85 are wired here; the 32 names std gates behind
@@ -323,27 +295,6 @@ mod windows_cache {
                 return (word >> pos) & 1 != 0;
             }
             populate_fast();
-        }
-    }
-
-    /// Single-load query against the full cache (IPFP + registry, when
-    /// authorized). Same shape as [`query_fast`] but reads
-    /// `FULL_LO`/`FULL_HI`, which `populate_full` fills with the union
-    /// of IPFP and registry-decoded `ID_AA64*_EL1` bits.
-    #[inline]
-    pub(super) fn query_full(feature: Feature) -> bool {
-        let bit = feature as u8;
-        let (atomic, pos) = if bit < 64 {
-            (&FULL_LO, bit)
-        } else {
-            (&FULL_HI, bit - 64)
-        };
-        loop {
-            let word = atomic.load(Ordering::Acquire);
-            if word & INIT_BIT != 0 {
-                return (word >> pos) & 1 != 0;
-            }
-            populate_full();
         }
     }
 

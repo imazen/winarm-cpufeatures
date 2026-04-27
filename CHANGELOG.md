@@ -4,29 +4,35 @@ All notable changes to this project are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.1.1] — 2026-04-27
+## [0.1.2] — 2026-04-27
 
 ### Added
 
-- `is_aarch64_feature_detected_full!` macro and `is_detected_full(Feature)`
-  helper. Same call shape as `_fast`, but on Windows ARM64 with the
-  `registry` Cargo feature enabled it consults the registry-decoded
-  `ID_AA64*_EL1` layer in addition to IPFP — making the ~30 features
-  `IsProcessorFeaturePresent` doesn't expose (`fhm`, `fcma`, `frintts`,
-  `sm4`, `paca`/`pacg`, `bti`, `dpb`/`dpb2`, `flagm`/`flagm2`, `mte`, the
-  SVE2 variants, SME, FP8, …) actually observable.
-- `windows_cache::query_full(feature) -> bool` — single-load Acquire path
-  against the full cache, mirroring `query_fast`. Powers `is_detected_full`.
+- `Feature::from_name(&str) -> Option<Feature>` — promoted from a
+  crate-internal helper to a public `const fn`. Lets consumers fold a
+  string-literal feature name to a `Feature` discriminant at compile
+  time, then drive a single [`Features::current_full`] snapshot lookup
+  with zero per-call name dispatch:
 
-### Why
+  ```rust
+  const SHA3: Feature = match Feature::from_name("sha3") {
+      Some(f) => f,
+      None => unreachable!(),
+  };
+  let _ = Features::current_full().has(SHA3);
+  ```
 
-`_fast` was IPFP-only by design (the registry layer only fed
-`Features::current_full()` snapshots), so single-feature callers reaching
-for the macro form silently got back `false` for every registry-classified
-name even with `features = ["registry"]` and `set_registry_enabled(true)`.
-Downstream consumers like archmage need a per-name macro that actually
-hits the registry — that is what `_full` is. `_fast` is preserved
-unchanged for callers that explicitly want the IPFP-only fast path.
+  Designed for crates like archmage that want registry-aware detection
+  driven by their existing string-literal call shape, without
+  reintroducing the `_full!` macro path that 0.1.0 deliberately removed
+  ([`b491f51`](https://github.com/imazen/winarm-cpufeatures/commit/b491f51)).
+
+### Notes
+
+- `0.1.1` is yanked. It briefly added `is_aarch64_feature_detected_full!`
+  and `is_detected_full` — a regression of the v0.2-prep cleanup.
+  `0.1.2` rolls back to 0.1.0's macro/API surface plus only the
+  `Feature::from_name` addition.
 
 ## [0.1.0] — 2026-04-27
 
