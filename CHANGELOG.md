@@ -6,13 +6,13 @@ Initial release.
 
 ### Drop-in for `std::arch::is_aarch64_feature_detected!`
 
-This crate ships an `is_aarch64_feature_detected!` macro with the *same
+This crate ships an `is_aarch64_feature_detected_fast!` macro with the *same
 name*, *same dashed feature spelling*, and *same call shape* as std's,
 namespaced by crate path. Migration from std is a one-line import swap.
 
 ```diff
 -use std::arch::is_aarch64_feature_detected;
-+use winarm_cpufeatures::is_aarch64_feature_detected;
++use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 ```
 
 Names use stdarch's dashed convention exactly: `sve2-aes`, `sme-fa64`,
@@ -88,7 +88,7 @@ that PR lands stable.
 
 ### Public API (docs-visible)
 
-- `is_aarch64_feature_detected!(name)` — fast detection.
+- `is_aarch64_feature_detected_fast!(name)` — fast detection.
 - `is_aarch64_feature_detected_full!(name)` — full detection (Windows
   aarch64 with `registry` adds registry-decoded features).
 - `Features` snapshot struct: `EMPTY`, `current()`, `current_full()`,

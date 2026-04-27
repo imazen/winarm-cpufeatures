@@ -4,22 +4,22 @@
 //! routing) live in `src/cache.rs`'s `#[cfg(test)] mod` because they need
 //! `pub(crate)` items. This file holds public-API-only assertions.
 
-use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
+use winarm_cpufeatures::{is_aarch64_feature_detected_fast, is_aarch64_feature_detected_full};
 
 #[test]
 fn fast_macro_compiles_for_ipfp_features() {
     // All these features have DetectionMethod::Ipfp; the fast macro accepts them.
-    let _ = is_aarch64_feature_detected!("asimd");
-    let _ = is_aarch64_feature_detected!("fp");
-    let _ = is_aarch64_feature_detected!("aes");
-    let _ = is_aarch64_feature_detected!("crc");
-    let _ = is_aarch64_feature_detected!("lse");
-    let _ = is_aarch64_feature_detected!("dotprod");
-    let _ = is_aarch64_feature_detected!("jsconv");
-    let _ = is_aarch64_feature_detected!("rcpc");
-    let _ = is_aarch64_feature_detected!("sve");
-    let _ = is_aarch64_feature_detected!("sve2");
-    let _ = is_aarch64_feature_detected!("sve2p1");
+    let _ = is_aarch64_feature_detected_fast!("asimd");
+    let _ = is_aarch64_feature_detected_fast!("fp");
+    let _ = is_aarch64_feature_detected_fast!("aes");
+    let _ = is_aarch64_feature_detected_fast!("crc");
+    let _ = is_aarch64_feature_detected_fast!("lse");
+    let _ = is_aarch64_feature_detected_fast!("dotprod");
+    let _ = is_aarch64_feature_detected_fast!("jsconv");
+    let _ = is_aarch64_feature_detected_fast!("rcpc");
+    let _ = is_aarch64_feature_detected_fast!("sve");
+    let _ = is_aarch64_feature_detected_fast!("sve2");
+    let _ = is_aarch64_feature_detected_fast!("sve2p1");
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn non_windows_aarch64_matches_stdarch() {
         };
     }
     // All 37 stable stdarch feature names that share the same spelling
-    // between is_aarch64_feature_detected_full! and is_aarch64_feature_detected!.
+    // between is_aarch64_feature_detected_full! and is_aarch64_feature_detected_fast!.
     // SVE2 sub-features are excluded: stdarch uses dashes (e.g. "sve2-aes")
     // while this crate uses underscores (e.g. "sve2-aes").
     check!(

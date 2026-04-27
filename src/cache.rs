@@ -111,10 +111,10 @@ fn snapshot() -> Features {
 }
 
 /// Macro implementation detail: returns whether `feature` is detected on
-/// this target. Users should reach for [`is_aarch64_feature_detected!`]
+/// this target. Users should reach for [`is_aarch64_feature_detected_fast!`]
 /// or [`Features::current().has(feature)`].
 ///
-/// [`is_aarch64_feature_detected!`]: crate::is_aarch64_feature_detected!
+/// [`is_aarch64_feature_detected_fast!`]: crate::is_aarch64_feature_detected_fast!
 #[doc(hidden)]
 #[inline]
 pub fn is_detected(feature: Feature) -> bool {

@@ -1,4 +1,4 @@
-//! Compile-time benchmark: ~480 invocations of `winarm_cpufeatures::is_aarch64_feature_detected!`.
+//! Compile-time benchmark: ~480 invocations of `winarm_cpufeatures::is_aarch64_feature_detected_fast!`.
 //!
 //! Apples-to-apples with `bin/stdlib.rs`, which exercises the same number
 //! of `std::arch::is_aarch64_feature_detected!` invocations on the same
@@ -6,12 +6,12 @@
 
 use std::hint::black_box;
 
-use winarm_cpufeatures::is_aarch64_feature_detected;
+use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 
 #[inline(never)]
 fn block() -> u32 {
     let mut acc: u32 = 0;
-    macro_rules! probe { ($($n:tt),* $(,)?) => { $( acc ^= is_aarch64_feature_detected!($n) as u32; )* } }
+    macro_rules! probe { ($($n:tt),* $(,)?) => { $( acc ^= is_aarch64_feature_detected_fast!($n) as u32; )* } }
     macro_rules! batch {
         () => {
             probe!(

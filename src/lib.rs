@@ -3,8 +3,9 @@
 //!
 //! ## Why this exists
 //!
-//! On `aarch64-pc-windows-msvc` with Rust 1.85, `is_aarch64_feature_detected!`
-//! is a thin wrapper around `IsProcessorFeaturePresent` (IPFP). Microsoft
+//! On `aarch64-pc-windows-msvc` with Rust 1.85, std's
+//! `is_aarch64_feature_detected!` is a thin wrapper around
+//! `IsProcessorFeaturePresent` (IPFP). Microsoft
 //! defines 56 `PF_ARM_*` constants in Windows SDK 10.0.26100.0 but the
 //! upstream stdarch backend only wires 17 of them, and Microsoft has never
 //! exposed ~30 stdarch feature names through any `PF_ARM_*` constant at all
@@ -22,7 +23,7 @@
 //! // before
 //! use std::arch::is_aarch64_feature_detected;
 //! // after
-//! use winarm_cpufeatures::is_aarch64_feature_detected;
+//! use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 //! # }
 //! ```
 //!
@@ -48,7 +49,7 @@
 //!
 //! ## Two macros, two cost tiers (Windows aarch64 only)
 //!
-//! - [`is_aarch64_feature_detected!`] reads the IPFP-only cache. Names
+//! - [`is_aarch64_feature_detected_fast!`] reads the IPFP-only cache. Names
 //!   IPFP can't see (Registry-classified) silently return `false`,
 //!   matching std's behaviour on Windows.
 //! - [`is_aarch64_feature_detected_full!`] reads the IPFP + registry
@@ -64,12 +65,12 @@
 //! ## Quick reference
 //!
 //! ```no_run
-//! use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
+//! use winarm_cpufeatures::{is_aarch64_feature_detected_fast, is_aarch64_feature_detected_full};
 //!
 //! // `rdm` works because it's IPFP-derived (DP||LSE → RDM).
-//! if is_aarch64_feature_detected!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
-//! if is_aarch64_feature_detected!("sve") { /* SVE kernel */ }
-//! if is_aarch64_feature_detected!("aes") { /* AES instructions */ }
+//! if is_aarch64_feature_detected_fast!("rdm") { /* Rounding Doubling Multiply Accumulate */ }
+//! if is_aarch64_feature_detected_fast!("sve") { /* SVE kernel */ }
+//! if is_aarch64_feature_detected_fast!("aes") { /* AES instructions */ }
 //!
 //! // Registry-decoded names need _full! on Windows aarch64. Identical
 //! // to the fast macro on every other target.
@@ -142,7 +143,7 @@ pub use features::Feature;
 /// to validate; cross-platform CI on aarch64 catches typos there).
 ///
 /// ```no_run
-/// if winarm_cpufeatures::is_aarch64_feature_detected!("aes") {
+/// if winarm_cpufeatures::is_aarch64_feature_detected_fast!("aes") {
 ///     // AES instructions
 /// }
 /// ```
@@ -150,7 +151,7 @@ pub use features::Feature;
 /// [`Features::current_full`]: crate::Features::current_full
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 #[macro_export]
-macro_rules! is_aarch64_feature_detected {
+macro_rules! is_aarch64_feature_detected_fast {
     ("asimd") => {
         $crate::is_detected($crate::Feature::Asimd)
     };
@@ -382,7 +383,7 @@ macro_rules! is_aarch64_feature_detected {
 
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
-macro_rules! is_aarch64_feature_detected {
+macro_rules! is_aarch64_feature_detected_fast {
     // Pure passthrough. Std validates names and dispatches via HWCAP.
     // Unstable feature names (`sme`, `cssc`, `sve2p1`, `pauth-lr`, …)
     // require nightly + the user's own
@@ -397,7 +398,7 @@ macro_rules! is_aarch64_feature_detected {
 
 #[cfg(not(target_arch = "aarch64"))]
 #[macro_export]
-macro_rules! is_aarch64_feature_detected {
+macro_rules! is_aarch64_feature_detected_fast {
     // Single-arm: every documented name returns false on non-aarch64.
     // No std passthrough here (std::arch::is_aarch64_feature_detected!
     // doesn't compile on non-aarch64), so we accept any string literal
@@ -415,10 +416,10 @@ macro_rules! is_aarch64_feature_detected {
 /// reads the IPFP + registry cache — covers the ~30 stdarch names
 /// `IsProcessorFeaturePresent` can't see. Without the `registry`
 /// feature (or with [`set_registry_enabled(false)`] called at startup),
-/// behaves identically to [`is_aarch64_feature_detected!`].
+/// behaves identically to [`is_aarch64_feature_detected_fast!`].
 ///
 /// **On every other target**, behaves identically to
-/// [`is_aarch64_feature_detected!`].
+/// [`is_aarch64_feature_detected_fast!`].
 ///
 /// ```no_run
 /// if winarm_cpufeatures::is_aarch64_feature_detected_full!("paca") {
@@ -661,7 +662,7 @@ macro_rules! is_aarch64_feature_detected_full {
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_full {
-    // Identical to `is_aarch64_feature_detected!` on this target —
+    // Identical to `is_aarch64_feature_detected_fast!` on this target —
     // there is no registry layer outside Windows-aarch64.
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)

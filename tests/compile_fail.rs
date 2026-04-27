@@ -1,4 +1,4 @@
-//! Compile-fail documentation for the `is_aarch64_feature_detected!` macro's registry guard
+//! Compile-fail documentation for the `is_aarch64_feature_detected_fast!` macro's registry guard
 //! and the catch-all "unknown feature name" arm.
 //!
 //! Each block below is an example of code that intentionally fails to
@@ -7,12 +7,12 @@
 //!
 //! ```compile_fail
 //! // "paca" is DetectionMethod::Registry; the fast macro rejects it.
-//! let _ = winarm_cpufeatures::is_aarch64_feature_detected!("paca");
+//! let _ = winarm_cpufeatures::is_aarch64_feature_detected_fast!("paca");
 //! ```
 //!
 //! ```compile_fail
 //! // "bti" is also Registry-only.
-//! let _ = winarm_cpufeatures::is_aarch64_feature_detected!("bti");
+//! let _ = winarm_cpufeatures::is_aarch64_feature_detected_fast!("bti");
 //! ```
 //!
 //! ```compile_fail

@@ -33,7 +33,7 @@ unsafe fn sve_cntb() -> u64 {
 #[test]
 fn sve_detect_matches_execution() {
     if !is_aarch64_feature_detected_full!("sve") {
-        eprintln!("sve not is_aarch64_feature_detected on this CPU — skipping execution check");
+        eprintln!("sve not detected on this CPU — skipping execution check");
         return;
     }
     // SAFETY: is_aarch64_feature_detected_full!("sve") confirmed SVE is present; RUSTFLAGS

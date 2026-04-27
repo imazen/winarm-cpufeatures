@@ -4,7 +4,7 @@ AArch64 CPU feature detection that fills the Windows-on-ARM gap in `std::arch::i
 
 ## The gap
 
-On Windows aarch64, Rust's `is_aarch64_feature_detected!` is a thin wrapper around `IsProcessorFeaturePresent`. As of stable Rust 1.85 it only wires ~10 features. On Windows ARM hardware these all report `false` despite being physically present:
+On Windows aarch64, std's `is_aarch64_feature_detected!` is a thin wrapper around `IsProcessorFeaturePresent`. As of stable Rust 1.85 it only wires ~10 features. On Windows ARM hardware these all report `false` despite being physically present:
 
 ```
 rdm, fp16, fhm, fcma, bf16, i8mm, frintts, sha3, sha512, sm4,
@@ -27,17 +27,17 @@ Same name, same dashed feature spelling (`sve2-aes`, `sme-fa64`, `pauth-lr`, …
 
 ```diff
 -use std::arch::is_aarch64_feature_detected;
-+use winarm_cpufeatures::is_aarch64_feature_detected;
++use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 ```
 
 Every existing call site stays unchanged.
 
 ```rust
-use winarm_cpufeatures::is_aarch64_feature_detected;
+use winarm_cpufeatures::is_aarch64_feature_detected_fast;
 
-if is_aarch64_feature_detected!("rdm") { /* vqrdmlahq_s16 etc. */ }
-if is_aarch64_feature_detected!("bf16") { /* bfdot */ }
-if is_aarch64_feature_detected!("sve")  { /* SVE kernel */ }
+if is_aarch64_feature_detected_fast!("rdm") { /* vqrdmlahq_s16 etc. */ }
+if is_aarch64_feature_detected_fast!("bf16") { /* bfdot */ }
+if is_aarch64_feature_detected_fast!("sve")  { /* SVE kernel */ }
 ```
 
 Or the struct-style API for batched checks:
@@ -55,7 +55,7 @@ if f.has(Feature::Bf16) && f.has(Feature::I8mm) {
 
 | Macro | What it reads on Windows aarch64 |
 |---|---|
-| `is_aarch64_feature_detected!` | IPFP-only cache. Names IPFP can't see (`paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`, `fcma`, `frintts`, `sm4`, …) silently return `false`, matching std's behavior. |
+| `is_aarch64_feature_detected_fast!` | IPFP-only cache. Names IPFP can't see (`paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`, `fcma`, `frintts`, `sm4`, …) silently return `false`, matching std's behavior. |
 | `is_aarch64_feature_detected_full!` | IPFP + registry cache (when `--features registry` is on). Covers the ~25 names IPFP can't reach. |
 
 On non-Windows aarch64 and non-aarch64 the two macros behave identically.

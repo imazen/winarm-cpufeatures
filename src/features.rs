@@ -6,7 +6,7 @@
 //!
 //! Each feature has a [`DetectionMethod`] describing the cheapest backend
 //! that can confirm it on Windows-on-ARM. This drives the compile-time
-//! dispatch between [`crate::is_aarch64_feature_detected!`] (fast, IPFP-only) and
+//! dispatch between [`crate::is_aarch64_feature_detected_fast!`] (fast, IPFP-only) and
 //! [`crate::is_aarch64_feature_detected_full!`] (slow, reads the registry).
 
 #![allow(non_camel_case_types)]

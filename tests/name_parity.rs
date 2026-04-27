@@ -1,6 +1,6 @@
 //! Cross-platform name-parity test.
 //!
-//! Both `is_aarch64_feature_detected!` and `is_aarch64_feature_detected_full!`
+//! Both `is_aarch64_feature_detected_fast!` and `is_aarch64_feature_detected_full!`
 //! must accept every documented feature name on every supported target.
 //! The CI matrix (windows-11-arm, ubuntu-24.04-arm, macos-14, plus the
 //! non-aarch64 runners) catches any drift between the cfg-gated dispatch
@@ -13,7 +13,7 @@
 
 #![allow(unused_imports)]
 
-use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
+use winarm_cpufeatures::{is_aarch64_feature_detected_fast, is_aarch64_feature_detected_full};
 
 /// Per-target list of feature names that compile through both winarm
 /// macros. Calls `$cb!(name)` once per name.
@@ -177,7 +177,7 @@ macro_rules! for_every_stable_std_name {
 fn fast_accepts_all() {
     macro_rules! probe {
         ($n:tt) => {
-            let _ = is_aarch64_feature_detected!($n);
+            let _ = is_aarch64_feature_detected_fast!($n);
         };
     }
     for_every_supported_name!(probe);
@@ -203,7 +203,7 @@ fn fast_and_full_agree_on_non_windows() {
     macro_rules! check {
         ($n:tt) => {
             assert_eq!(
-                is_aarch64_feature_detected!($n),
+                is_aarch64_feature_detected_fast!($n),
                 is_aarch64_feature_detected_full!($n),
                 "fast/full disagree for `{}` — should be identical on this target",
                 $n,
@@ -250,7 +250,7 @@ fn non_aarch64_always_false() {
     macro_rules! check {
         ($n:tt) => {
             assert!(
-                !is_aarch64_feature_detected!($n),
+                !is_aarch64_feature_detected_fast!($n),
                 "expected `{}` to be false on non-aarch64",
                 $n,
             );
