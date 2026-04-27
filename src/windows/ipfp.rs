@@ -137,8 +137,7 @@ pub(crate) fn fill(f: &mut Features) {
     }
     // stdarch `sha3` is documented as "FEAT_SHA512 & FEAT_SHA3" — both
     // must be present. Microsoft exposes them as two separate flags.
-    if present(PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE)
-        && present(PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE)
+    if present(PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE) && present(PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE)
     {
         *f = f.with(Feature::Sha3);
     }

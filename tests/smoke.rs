@@ -104,13 +104,9 @@ fn non_windows_aarch64_matches_stdarch() {
     // SVE2 sub-features are excluded: stdarch uses dashes (e.g. "sve2-aes")
     // while this crate uses underscores (e.g. "sve2_aes").
     check!(
-        "asimd", "fp", "fp16", "fhm", "fcma", "bf16", "i8mm",
-        "jsconv", "frintts", "rdm", "dotprod",
-        "aes", "pmull", "sha2", "sha3", "sm4",
-        "crc", "lse", "lse2", "rcpc", "rcpc2",
-        "paca", "pacg", "bti", "dpb", "dpb2", "mte",
-        "dit", "sb", "ssbs", "flagm", "rand", "tme",
-        "sve", "sve2",
-        "f32mm", "f64mm",
+        "asimd", "fp", "fp16", "fhm", "fcma", "bf16", "i8mm", "jsconv", "frintts", "rdm",
+        "dotprod", "aes", "pmull", "sha2", "sha3", "sm4", "crc", "lse", "lse2", "rcpc", "rcpc2",
+        "paca", "pacg", "bti", "dpb", "dpb2", "mte", "dit", "sb", "ssbs", "flagm", "rand", "tme",
+        "sve", "sve2", "f32mm", "f64mm",
     );
 }

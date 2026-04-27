@@ -213,11 +213,9 @@ fn sc8280xp() {
     setup();
     // ── Must be present (stable stdarch names) ──────────────────────────
     for f in [
-        "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4",
-        "lse", "lse2", "rcpc", "rcpc2", "rdm", "dotprod", "jsconv",
-        "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
-        "paca", "pacg", "dpb", "dpb2", "flagm", "rand",
-        "sb", "ssbs",
+        "asimd", "fp", "crc", "aes", "pmull", "sha2", "sha3", "sm4", "lse", "lse2", "rcpc",
+        "rcpc2", "rdm", "dotprod", "jsconv", "fp16", "fhm", "fcma", "bf16", "i8mm", "frintts",
+        "paca", "pacg", "dpb", "dpb2", "flagm", "rand", "sb", "ssbs",
     ] {
         assert!(
             dispatch(f),
@@ -227,8 +225,7 @@ fn sc8280xp() {
 
     // ── Must be absent ──────────────────────────────────────────────────
     for f in [
-        "sve", "sve2", "sme", "sme2", "mte", "bti",
-        "lse128", "rcpc3", "mops", "wfxt",
+        "sve", "sve2", "sme", "sme2", "mte", "bti", "lse128", "rcpc3", "mops", "wfxt",
     ] {
         assert!(
             !dispatch(f),

@@ -41,7 +41,10 @@ const CPU0_SUBKEY: &str = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0";
 /// Some fields aren't currently consulted by the decoder (midr_el1 is
 /// vendor-id only; mmfr0/1/3 carry no stdarch-relevant feature bits today)
 /// but are read up-front so adding decoders in future is a one-line change.
-#[allow(dead_code, reason = "fields populated for future decoder expansion / diagnostics")]
+#[allow(
+    dead_code,
+    reason = "fields populated for future decoder expansion / diagnostics"
+)]
 #[derive(Default, Debug, Copy, Clone)]
 pub struct IdRegisters {
     pub midr_el1: Option<u64>,
