@@ -15,27 +15,36 @@ sve-b16b16, sme, sme2, sme2p1, ...
 
 ## What this crate does
 
-Ships a drop-in `detected!` macro that returns the correct answer on Windows. Detection strategy:
+Ships a drop-in `is_aarch64_feature_detected!` macro — same name, same dashed feature spelling, same call shape as std's. Detection strategy:
 
-1. **`IsProcessorFeaturePresent`** using all `PF_ARM_*` constants through SDK 26100 — covers the ~30 features Microsoft does expose (including the SVE/SME family added in Windows 11 24H2).
-2. **Registry `CP <hex>` parsing** — reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP 4030` etc., which are cached AArch64 ID register snapshots (`ID_AA64ISAR0/1/2_EL1`, `ID_AA64PFR0/1_EL1`, `ID_AA64MMFR0/1/2/3_EL1`). Same undocumented-but-stable approach used by LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime.
-3. **Platform baseline override** for `rdm` — Windows 11 on ARM mandates ARMv8.1-A, which guarantees FEAT_RDM.
+1. **`IsProcessorFeaturePresent`** using every `PF_ARM_*` constant through Windows SDK 26100 — covers the ~30 features Microsoft does expose, including the SVE/SME family added in Windows 11 24H2.
+2. **Registry `CP <hex>` parsing** (opt-in via the `registry` Cargo feature + `set_registry_enabled(true)` runtime call) — reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP 4030` etc., the AArch64 `ID_AA64*_EL1` snapshots Windows publishes. Same undocumented-but-stable approach used by LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime.
+3. **DP/LSE → RDM architectural inference** — Windows-on-ARM mandates ARMv8.1-A, which guarantees FEAT_RDM; matches what .NET 10 ships (`dotnet/runtime#109493`).
 
-On non-Windows platforms, `detected!` delegates directly to `std::arch::is_aarch64_feature_detected!` — no added logic, no overhead.
+On non-Windows aarch64 targets, `is_aarch64_feature_detected!` expands directly to `std::arch::is_aarch64_feature_detected!` — no added cache layer, no overhead. On non-aarch64 targets the macro returns `false` (whereas std's macro doesn't compile there), so cross-platform code can use one spelling.
 
 ## Usage
 
 ```rust
-use winarm_cpufeatures::detected;
+use winarm_cpufeatures::is_aarch64_feature_detected;
 
-if detected!("rdm") {
+if is_aarch64_feature_detected!("rdm") {
     // safe to use vqrdmlahq_s16 etc.
 }
 
-if detected!("bf16") {
+if is_aarch64_feature_detected!("bf16") {
     // safe to use bfdot
 }
 ```
+
+Migrating from `std::arch::is_aarch64_feature_detected!` is a one-line change:
+
+```diff
+-use std::arch::is_aarch64_feature_detected;
++use winarm_cpufeatures::is_aarch64_feature_detected;
+```
+
+Every existing call site stays the same. Feature names match std's spelling exactly (dashes, not underscores: `sve2-aes`, `sme-fa64`, `pauth-lr`, …).
 
 Or the struct-style API for batched checks:
 
