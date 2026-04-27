@@ -89,15 +89,6 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
-// Opt into the stdarch_aarch64_feature_detection gate when the
-// `nightly-stdarch` feature is enabled, so we can delegate the 32 unstable
-// stdarch feature names on non-Windows aarch64 targets. The `target_arch`
-// predicate guards against the gate being unrecognized on non-aarch64
-// nightly builds. Requires nightly rustc.
-#![cfg_attr(
-    all(feature = "nightly-stdarch", target_arch = "aarch64"),
-    feature(stdarch_aarch64_feature_detection)
-)]
 
 mod cache;
 mod features;
@@ -392,110 +383,13 @@ macro_rules! is_aarch64_feature_detected {
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected {
-    // The 32 names that std gates behind
-    // `#![feature(stdarch_aarch64_feature_detection)]`. We route them
-    // through `is_detected`, whose body cfg-gates on our
-    // `nightly-stdarch` Cargo feature — returning `false` on stable
-    // and dispatching through std on nightly, with the unstable gate
-    // contained in *our* crate so the user's crate doesn't need it.
-    ("cssc") => {
-        $crate::is_detected($crate::Feature::Cssc)
-    };
-    ("ecv") => {
-        $crate::is_detected($crate::Feature::Ecv)
-    };
-    ("faminmax") => {
-        $crate::is_detected($crate::Feature::FaMinMax)
-    };
-    ("flagm2") => {
-        $crate::is_detected($crate::Feature::FlagM2)
-    };
-    ("fp8") => {
-        $crate::is_detected($crate::Feature::Fp8)
-    };
-    ("fp8dot2") => {
-        $crate::is_detected($crate::Feature::Fp8Dot2)
-    };
-    ("fp8dot4") => {
-        $crate::is_detected($crate::Feature::Fp8Dot4)
-    };
-    ("fp8fma") => {
-        $crate::is_detected($crate::Feature::Fp8Fma)
-    };
-    ("fpmr") => {
-        $crate::is_detected($crate::Feature::Fpmr)
-    };
-    ("hbc") => {
-        $crate::is_detected($crate::Feature::Hbc)
-    };
-    ("lse128") => {
-        $crate::is_detected($crate::Feature::Lse128)
-    };
-    ("lut") => {
-        $crate::is_detected($crate::Feature::Lut)
-    };
-    ("mops") => {
-        $crate::is_detected($crate::Feature::Mops)
-    };
-    ("pauth-lr") => {
-        $crate::is_detected($crate::Feature::PauthLr)
-    };
-    ("rcpc3") => {
-        $crate::is_detected($crate::Feature::Rcpc3)
-    };
-    ("sme") => {
-        $crate::is_detected($crate::Feature::Sme)
-    };
-    ("sme2") => {
-        $crate::is_detected($crate::Feature::Sme2)
-    };
-    ("sme2p1") => {
-        $crate::is_detected($crate::Feature::Sme2p1)
-    };
-    ("sme-b16b16") => {
-        $crate::is_detected($crate::Feature::SmeB16b16)
-    };
-    ("sme-f16f16") => {
-        $crate::is_detected($crate::Feature::SmeF16f16)
-    };
-    ("sme-f64f64") => {
-        $crate::is_detected($crate::Feature::SmeF64f64)
-    };
-    ("sme-f8f16") => {
-        $crate::is_detected($crate::Feature::SmeF8f16)
-    };
-    ("sme-f8f32") => {
-        $crate::is_detected($crate::Feature::SmeF8f32)
-    };
-    ("sme-fa64") => {
-        $crate::is_detected($crate::Feature::SmeFa64)
-    };
-    ("sme-i16i64") => {
-        $crate::is_detected($crate::Feature::SmeI16i64)
-    };
-    ("sme-lutv2") => {
-        $crate::is_detected($crate::Feature::SmeLutv2)
-    };
-    ("ssve-fp8dot2") => {
-        $crate::is_detected($crate::Feature::SsveFp8Dot2)
-    };
-    ("ssve-fp8dot4") => {
-        $crate::is_detected($crate::Feature::SsveFp8Dot4)
-    };
-    ("ssve-fp8fma") => {
-        $crate::is_detected($crate::Feature::SsveFp8Fma)
-    };
-    ("sve2p1") => {
-        $crate::is_detected($crate::Feature::Sve2p1)
-    };
-    ("sve-b16b16") => {
-        $crate::is_detected($crate::Feature::SveB16b16)
-    };
-    ("wfxt") => {
-        $crate::is_detected($crate::Feature::WfxT)
-    };
-    // Stable names + any future stdarch additions: passthrough to
-    // std. Std validates and dispatches; new stable names Just Work.
+    // Pure passthrough. Std validates names and dispatches via HWCAP.
+    // Unstable feature names (`sme`, `cssc`, `sve2p1`, `pauth-lr`, …)
+    // require nightly + the user's own
+    // `#![feature(stdarch_aarch64_feature_detection)]` gate — same as
+    // calling std directly. We don't try to mask that on non-Windows
+    // aarch64 because std handles those targets correctly already;
+    // this crate exists for the Windows-aarch64 gap.
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)
     };
@@ -767,106 +661,8 @@ macro_rules! is_aarch64_feature_detected_full {
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[macro_export]
 macro_rules! is_aarch64_feature_detected_full {
-    // Same shape as `is_aarch64_feature_detected!` on this target —
-    // there's no registry layer to differ on. The 32 unstable names
-    // route through `is_detected_full` so we keep the unstable gate
-    // contained in our crate.
-    ("cssc") => {
-        $crate::is_detected_full($crate::Feature::Cssc)
-    };
-    ("ecv") => {
-        $crate::is_detected_full($crate::Feature::Ecv)
-    };
-    ("faminmax") => {
-        $crate::is_detected_full($crate::Feature::FaMinMax)
-    };
-    ("flagm2") => {
-        $crate::is_detected_full($crate::Feature::FlagM2)
-    };
-    ("fp8") => {
-        $crate::is_detected_full($crate::Feature::Fp8)
-    };
-    ("fp8dot2") => {
-        $crate::is_detected_full($crate::Feature::Fp8Dot2)
-    };
-    ("fp8dot4") => {
-        $crate::is_detected_full($crate::Feature::Fp8Dot4)
-    };
-    ("fp8fma") => {
-        $crate::is_detected_full($crate::Feature::Fp8Fma)
-    };
-    ("fpmr") => {
-        $crate::is_detected_full($crate::Feature::Fpmr)
-    };
-    ("hbc") => {
-        $crate::is_detected_full($crate::Feature::Hbc)
-    };
-    ("lse128") => {
-        $crate::is_detected_full($crate::Feature::Lse128)
-    };
-    ("lut") => {
-        $crate::is_detected_full($crate::Feature::Lut)
-    };
-    ("mops") => {
-        $crate::is_detected_full($crate::Feature::Mops)
-    };
-    ("pauth-lr") => {
-        $crate::is_detected_full($crate::Feature::PauthLr)
-    };
-    ("rcpc3") => {
-        $crate::is_detected_full($crate::Feature::Rcpc3)
-    };
-    ("sme") => {
-        $crate::is_detected_full($crate::Feature::Sme)
-    };
-    ("sme2") => {
-        $crate::is_detected_full($crate::Feature::Sme2)
-    };
-    ("sme2p1") => {
-        $crate::is_detected_full($crate::Feature::Sme2p1)
-    };
-    ("sme-b16b16") => {
-        $crate::is_detected_full($crate::Feature::SmeB16b16)
-    };
-    ("sme-f16f16") => {
-        $crate::is_detected_full($crate::Feature::SmeF16f16)
-    };
-    ("sme-f64f64") => {
-        $crate::is_detected_full($crate::Feature::SmeF64f64)
-    };
-    ("sme-f8f16") => {
-        $crate::is_detected_full($crate::Feature::SmeF8f16)
-    };
-    ("sme-f8f32") => {
-        $crate::is_detected_full($crate::Feature::SmeF8f32)
-    };
-    ("sme-fa64") => {
-        $crate::is_detected_full($crate::Feature::SmeFa64)
-    };
-    ("sme-i16i64") => {
-        $crate::is_detected_full($crate::Feature::SmeI16i64)
-    };
-    ("sme-lutv2") => {
-        $crate::is_detected_full($crate::Feature::SmeLutv2)
-    };
-    ("ssve-fp8dot2") => {
-        $crate::is_detected_full($crate::Feature::SsveFp8Dot2)
-    };
-    ("ssve-fp8dot4") => {
-        $crate::is_detected_full($crate::Feature::SsveFp8Dot4)
-    };
-    ("ssve-fp8fma") => {
-        $crate::is_detected_full($crate::Feature::SsveFp8Fma)
-    };
-    ("sve2p1") => {
-        $crate::is_detected_full($crate::Feature::Sve2p1)
-    };
-    ("sve-b16b16") => {
-        $crate::is_detected_full($crate::Feature::SveB16b16)
-    };
-    ("wfxt") => {
-        $crate::is_detected_full($crate::Feature::WfxT)
-    };
+    // Identical to `is_aarch64_feature_detected!` on this target —
+    // there is no registry layer outside Windows-aarch64.
     ($name:tt) => {
         ::std::arch::is_aarch64_feature_detected!($name)
     };

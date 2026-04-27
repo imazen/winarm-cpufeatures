@@ -165,14 +165,16 @@ pub fn is_detected_full(feature: Feature) -> bool {
 }
 
 /// Per-feature dispatch to `std::arch::is_aarch64_feature_detected!` on
-/// non-Windows aarch64 targets. Stable feature names dispatch directly;
-/// unstable feature names are gated on the `nightly-stdarch` Cargo
-/// feature and return `false` without it.
+/// non-Windows aarch64 targets. Only the 41 names that std accepts on
+/// stable Rust 1.85 are wired here; the 32 names std gates behind
+/// `#![feature(stdarch_aarch64_feature_detection)]` always read `false`
+/// in our `Features::current()` snapshot. Users wanting real detection
+/// for those should call `std::arch::is_aarch64_feature_detected!`
+/// directly with their own nightly feature gate enabled.
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
 #[inline]
 fn stdarch_dispatch(feature: Feature) -> bool {
     match feature {
-        // ── Stable on Rust 1.85 — 41 names ─────────────────────────────────
         Feature::Asimd => std::arch::is_aarch64_feature_detected!("asimd"),
         Feature::Fp => std::arch::is_aarch64_feature_detected!("fp"),
         Feature::Fp16 => std::arch::is_aarch64_feature_detected!("fp16"),
@@ -214,75 +216,10 @@ fn stdarch_dispatch(feature: Feature) -> bool {
         Feature::Sve2Sm4 => std::arch::is_aarch64_feature_detected!("sve2-sm4"),
         Feature::F32mm => std::arch::is_aarch64_feature_detected!("f32mm"),
         Feature::F64mm => std::arch::is_aarch64_feature_detected!("f64mm"),
-        // ── Nightly-only on Rust 1.85 — 32 names ──────────────────────────
-        // Require `#![feature(stdarch_aarch64_feature_detection)]`; gated
-        // on the `nightly-stdarch` Cargo feature.
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Cssc => std::arch::is_aarch64_feature_detected!("cssc"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Ecv => std::arch::is_aarch64_feature_detected!("ecv"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::FaMinMax => std::arch::is_aarch64_feature_detected!("faminmax"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::FlagM2 => std::arch::is_aarch64_feature_detected!("flagm2"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Fp8 => std::arch::is_aarch64_feature_detected!("fp8"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Fp8Dot2 => std::arch::is_aarch64_feature_detected!("fp8dot2"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Fp8Dot4 => std::arch::is_aarch64_feature_detected!("fp8dot4"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Fp8Fma => std::arch::is_aarch64_feature_detected!("fp8fma"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Fpmr => std::arch::is_aarch64_feature_detected!("fpmr"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Hbc => std::arch::is_aarch64_feature_detected!("hbc"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Lse128 => std::arch::is_aarch64_feature_detected!("lse128"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Lut => std::arch::is_aarch64_feature_detected!("lut"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Mops => std::arch::is_aarch64_feature_detected!("mops"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::PauthLr => std::arch::is_aarch64_feature_detected!("pauth-lr"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Rcpc3 => std::arch::is_aarch64_feature_detected!("rcpc3"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Sme => std::arch::is_aarch64_feature_detected!("sme"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Sme2 => std::arch::is_aarch64_feature_detected!("sme2"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Sme2p1 => std::arch::is_aarch64_feature_detected!("sme2p1"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeB16b16 => std::arch::is_aarch64_feature_detected!("sme-b16b16"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeF16f16 => std::arch::is_aarch64_feature_detected!("sme-f16f16"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeF64f64 => std::arch::is_aarch64_feature_detected!("sme-f64f64"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeF8f16 => std::arch::is_aarch64_feature_detected!("sme-f8f16"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeF8f32 => std::arch::is_aarch64_feature_detected!("sme-f8f32"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeFa64 => std::arch::is_aarch64_feature_detected!("sme-fa64"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeI16i64 => std::arch::is_aarch64_feature_detected!("sme-i16i64"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SmeLutv2 => std::arch::is_aarch64_feature_detected!("sme-lutv2"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SsveFp8Dot2 => std::arch::is_aarch64_feature_detected!("ssve-fp8dot2"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SsveFp8Dot4 => std::arch::is_aarch64_feature_detected!("ssve-fp8dot4"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SsveFp8Fma => std::arch::is_aarch64_feature_detected!("ssve-fp8fma"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::Sve2p1 => std::arch::is_aarch64_feature_detected!("sve2p1"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::SveB16b16 => std::arch::is_aarch64_feature_detected!("sve-b16b16"),
-        #[cfg(feature = "nightly-stdarch")]
-        Feature::WfxT => std::arch::is_aarch64_feature_detected!("wfxt"),
-        // Without `nightly-stdarch`, the unstable names fall through to false.
-        #[cfg(not(feature = "nightly-stdarch"))]
+        // The 32 names std gates behind `stdarch_aarch64_feature_detection`
+        // always read `false` here. We don't try to wire them — std works
+        // perfectly on these targets when the user opts into nightly with
+        // their own feature gate, and that's where they should go.
         _ => false,
     }
 }

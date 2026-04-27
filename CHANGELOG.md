@@ -50,9 +50,7 @@ results) non-aarch64 hosts.
   (non-Windows aarch64) — no const-eval, no per-site string-compare,
   no `panic!`-based assertions. Compile-time cost matches calling
   `std::arch::is_aarch64_feature_detected!` directly.
-- No build script. Nightly opt-in for the 32 unstable stdarch feature
-  names is via an explicit `nightly-stdarch` Cargo feature; stable
-  users get the 41 stable names without build-script overhead.
+- No build script.
 
 ### Cargo features
 
@@ -60,28 +58,28 @@ results) non-aarch64 hosts.
   decoder. Off by default. When enabled, the registry path is
   consulted by default at runtime; suppress with
   `set_registry_enabled(false)` for sandboxed processes.
-- `nightly-stdarch` — opt into
-  `#![feature(stdarch_aarch64_feature_detection)]` so non-Windows
-  aarch64 targets can detect the 32 unstable stdarch names. Requires
-  nightly rustc.
 - `nightly-sve` — enable the SVE execution test
-  (`tests/sve_execution.rs`).
+  (`tests/sve_execution.rs`). Test-only.
 
-### Relationship to upstream std
+### Windows-aarch64-first scope
 
-The macros do not reject names std accepts. On non-Windows aarch64,
-both `is_aarch64_feature_detected!` and `is_aarch64_feature_detected_full!`
-are a single-arm `:tt` passthrough to `std::arch::is_aarch64_feature_detected!` —
-std validates names and dispatches. New stdarch additions (e.g. via
-[rust-lang/rust#155856](https://github.com/rust-lang/rust/pull/155856),
-which adds Windows IPFP coverage for `fp16`/`bf16`/`i8mm`/`lse2`/
-`sha3`/`f32mm`/`f64mm`/`rdm`) are picked up automatically without any
-winarm-cpufeatures update.
+This crate exists to fill the Windows-on-ARM gap. On non-Windows
+aarch64 we passthrough to `std::arch::is_aarch64_feature_detected!`
+unmodified — std handles those targets correctly already, and unstable
+feature names (the 32 names std gates behind
+`#![feature(stdarch_aarch64_feature_detection)]`) require the user's
+own nightly + feature gate, same as calling std directly. Drop-in
+import works for stable feature names; for unstable names on
+non-Windows aarch64, use std with its own gate.
 
-A `winarm_is_superset_of_std_on_windows` test in `tests/name_parity.rs`
-asserts the invariant: any feature std reports present on Windows
-ARM64, winarm must also report present. Holds today and continues to
-hold once that PR lands stable.
+On Windows aarch64 we own the dispatch: cache-based detection covers
+the full 73 names (regardless of rustc channel), filling in what
+Microsoft's `IsProcessorFeaturePresent` and the upcoming
+[rust-lang/rust#155856](https://github.com/rust-lang/rust/pull/155856)
+can't yet reach. A `winarm_is_superset_of_std_on_windows` test
+asserts that whenever std reports a feature present, winarm also
+reports it — the invariant holds today and continues to hold after
+that PR lands stable.
 
 ### Public API (docs-visible)
 

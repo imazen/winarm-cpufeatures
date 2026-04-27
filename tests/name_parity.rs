@@ -15,11 +15,18 @@
 
 use winarm_cpufeatures::{is_aarch64_feature_detected, is_aarch64_feature_detected_full};
 
-/// Single source of truth for the documented feature-name list. Calls
-/// `$cb!(name)` once per name. The callback macro decides what to do
-/// with each name (fast probe, full probe, runtime equivalence, …).
-macro_rules! for_every_name {
+/// Per-target list of feature names that compile through both winarm
+/// macros. Calls `$cb!(name)` once per name.
+///
+/// - **Windows aarch64**: all 73 names (cache-based dispatch handles
+///   stable + unstable identically).
+/// - **non-Windows aarch64**: 41 stable names (the macros passthrough
+///   to std, which on stable Rust rejects the 32 unstable names).
+/// - **non-aarch64**: all 73 names (single `:literal` arm accepts
+///   everything, returns `false`).
+macro_rules! for_every_supported_name {
     ($cb:ident) => {
+        // Stable names — compile on every target.
         $cb!("asimd");
         $cb!("fp");
         $cb!("fp16");
@@ -39,25 +46,44 @@ macro_rules! for_every_name {
         $cb!("crc");
         $cb!("lse");
         $cb!("lse2");
-        $cb!("lse128");
         $cb!("rcpc");
         $cb!("rcpc2");
-        $cb!("rcpc3");
         $cb!("paca");
         $cb!("pacg");
-        $cb!("pauth-lr");
         $cb!("bti");
         $cb!("dpb");
         $cb!("dpb2");
         $cb!("mte");
-        $cb!("mops");
         $cb!("dit");
         $cb!("sb");
         $cb!("ssbs");
         $cb!("flagm");
-        $cb!("flagm2");
         $cb!("rand");
         $cb!("tme");
+        $cb!("sve");
+        $cb!("sve2");
+        $cb!("sve2-aes");
+        $cb!("sve2-bitperm");
+        $cb!("sve2-sha3");
+        $cb!("sve2-sm4");
+        $cb!("f32mm");
+        $cb!("f64mm");
+        // Unstable-on-stable-Rust names — only on targets where they
+        // compile through our macros without a user-side feature gate.
+        // On non-Windows aarch64 they passthrough to std which errors
+        // on stable; skip them there.
+        for_every_unstable_name_when_supported!($cb);
+    };
+}
+
+#[cfg(any(target_os = "windows", not(target_arch = "aarch64")))]
+macro_rules! for_every_unstable_name_when_supported {
+    ($cb:ident) => {
+        $cb!("lse128");
+        $cb!("rcpc3");
+        $cb!("pauth-lr");
+        $cb!("mops");
+        $cb!("flagm2");
         $cb!("ecv");
         $cb!("cssc");
         $cb!("wfxt");
@@ -69,16 +95,8 @@ macro_rules! for_every_name {
         $cb!("fp8dot4");
         $cb!("fp8fma");
         $cb!("fpmr");
-        $cb!("sve");
-        $cb!("sve2");
         $cb!("sve2p1");
-        $cb!("sve2-aes");
-        $cb!("sve2-bitperm");
-        $cb!("sve2-sha3");
-        $cb!("sve2-sm4");
         $cb!("sve-b16b16");
-        $cb!("f32mm");
-        $cb!("f64mm");
         $cb!("sme");
         $cb!("sme2");
         $cb!("sme2p1");
@@ -96,7 +114,16 @@ macro_rules! for_every_name {
     };
 }
 
-/// Same shape as [`for_every_name`] but only the 41 names that
+#[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
+macro_rules! for_every_unstable_name_when_supported {
+    ($cb:ident) => {
+        // Skipped: 32 unstable-on-stable-Rust names would error here
+        // because our macro passes through to std, which rejects them
+        // without `#![feature(stdarch_aarch64_feature_detection)]`.
+    };
+}
+
+/// Same shape as [`for_every_supported_name`] but only the 41 names that
 /// `std::arch::is_aarch64_feature_detected!` accepts on stable Rust
 /// 1.85. Used for tests that compare against std's macro directly —
 /// the unstable-on-stable names would error on stable rustc.
@@ -153,7 +180,7 @@ fn fast_accepts_all() {
             let _ = is_aarch64_feature_detected!($n);
         };
     }
-    for_every_name!(probe);
+    for_every_supported_name!(probe);
 }
 
 #[test]
@@ -163,7 +190,7 @@ fn full_accepts_all() {
             let _ = is_aarch64_feature_detected_full!($n);
         };
     }
-    for_every_name!(probe);
+    for_every_supported_name!(probe);
 }
 
 /// On non-Windows targets there's no registry layer, so fast and full
@@ -183,7 +210,7 @@ fn fast_and_full_agree_on_non_windows() {
             );
         };
     }
-    for_every_name!(check);
+    for_every_supported_name!(check);
 }
 
 /// On Windows aarch64, winarm's detection must be a *strict superset*
@@ -234,5 +261,5 @@ fn non_aarch64_always_false() {
             );
         };
     }
-    for_every_name!(check);
+    for_every_supported_name!(check);
 }

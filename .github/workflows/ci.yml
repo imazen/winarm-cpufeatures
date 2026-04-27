@@ -193,26 +193,6 @@ jobs:
       - run: cargo clippy --all-targets ${{ matrix.combo.args }} -- -D warnings
 
   # ────────────────────────────────────────────────────────────────────────
-  # Nightly-only feature combinations. Exercises the
-  # `nightly-stdarch` paths that need rustc nightly to compile.
-  # ────────────────────────────────────────────────────────────────────────
-  feature-combos-nightly:
-    name: Features nightly (${{ matrix.combo.name }})
-    runs-on: ubuntu-24.04-arm
-    strategy:
-      fail-fast: false
-      matrix:
-        combo:
-          - { name: "nightly-stdarch",          args: "--features nightly-stdarch" }
-          - { name: "registry+nightly-stdarch", args: "--features registry,nightly-stdarch" }
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build ${{ matrix.combo.args }}
-      - run: cargo test ${{ matrix.combo.args }}
-
-  # ────────────────────────────────────────────────────────────────────────
   # MSRV — every supported platform.
   # ────────────────────────────────────────────────────────────────────────
   msrv:
