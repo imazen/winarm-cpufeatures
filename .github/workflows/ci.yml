@@ -62,6 +62,45 @@ jobs:
           path: feature-dump.txt
 
   # ────────────────────────────────────────────────────────────────────────
+  # Consumer-crate macro-hygiene check. `contrib/compile-bench/` is a
+  # literal workspace-detached crate that depends on winarm-cpufeatures
+  # via a path dependency and invokes both macros from a fully external
+  # compilation unit. Stricter than `tests/*.rs` integration tests
+  # (those still share the workspace) — catches `$crate` resolution
+  # bugs and visibility quirks that only surface from a true outside
+  # consumer.
+  #
+  # Runs on every aarch64 target so each `#[cfg]`-gated macro
+  # definition gets exercised through real consumer-crate macro
+  # expansion.
+  # ────────────────────────────────────────────────────────────────────────
+  consumer-crate:
+    name: Consumer-crate hygiene (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-11-arm,    name: Windows ARM64 }
+          - { os: ubuntu-24.04-arm,  name: Linux ARM64 }
+          - { os: macos-14,          name: macOS ARM64 }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contrib/compile-bench
+      - name: Build consumer crate
+        working-directory: contrib/compile-bench
+        run: cargo build
+      - name: Run winarm bin
+        working-directory: contrib/compile-bench
+        run: cargo run --bin winarm
+      - name: Run stdlib bin
+        working-directory: contrib/compile-bench
+        run: cargo run --bin stdlib
+
+  # ────────────────────────────────────────────────────────────────────────
   # Non-aarch64 targets — confirm the crate compiles and tests pass on
   # platforms where it's a no-op pass-through.
   # ────────────────────────────────────────────────────────────────────────
