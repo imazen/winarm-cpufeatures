@@ -38,6 +38,10 @@ macro_rules! features {
             $($variant = $bit,)*
         }
 
+        /// The canonical full list of features. Source for `Feature::all()`
+        /// and the compile-time bit-layout validation in this module.
+        const ALL_FEATURES: &[Feature] = &[$(Feature::$variant),*];
+
         impl Feature {
             /// The canonical name as accepted by `std::arch::is_aarch64_feature_detected!`.
             pub const fn name(self) -> &'static str {
@@ -65,8 +69,7 @@ macro_rules! features {
 
             /// Iterator over every feature. Useful for diagnostics.
             pub fn all() -> impl Iterator<Item = Self> {
-                const ALL: &[Feature] = &[$(Feature::$variant),*];
-                ALL.iter().copied()
+                ALL_FEATURES.iter().copied()
             }
         }
     };
@@ -175,47 +178,56 @@ features! {
     SmeF16f16  = (73, "sme-f16f16",   Ipfp),
 }
 
+// ─── Compile-time bit-layout validation ───────────────────────────────────
+//
+// The detection cache stores feature presence as bits in two `AtomicU64`s
+// (`lo` and `hi`). Each `Feature` variant's discriminant doubles as its
+// bit index. Three invariants must hold for the encoding to work:
+//
+//   1. Every discriminant fits in `0..128`.
+//   2. No discriminant equals 63 (reserved as `INIT_BIT` in `lo`)
+//      or 127 (reserved as `INIT_BIT` in `hi`); see `cache::INIT_BIT`.
+//   3. No two features share the same discriminant.
+//
+// Violating any of these silently corrupts the cache encoding. Rather
+// than checking at runtime (which catches bugs after the binary
+// shipped), we evaluate the invariants at compile time. Adding a feature
+// at bit 63 or 127 — or duplicating an existing bit — fails the build
+// with the message below.
+
+const _: () = {
+    let mut i = 0;
+    while i < ALL_FEATURES.len() {
+        let bit = ALL_FEATURES[i] as u8;
+        assert!(bit < 128, "Feature discriminant out of range: must be in 0..128");
+        assert!(
+            bit != 63,
+            "Feature occupies bit 63, reserved as `INIT_BIT` in `lo` — pick a different discriminant",
+        );
+        assert!(
+            bit != 127,
+            "Feature occupies bit 127, reserved as `INIT_BIT` in `hi` — pick a different discriminant",
+        );
+        let mut j = i + 1;
+        while j < ALL_FEATURES.len() {
+            assert!(
+                (ALL_FEATURES[i] as u8) != (ALL_FEATURES[j] as u8),
+                "Two features share the same discriminant — discriminants must be unique",
+            );
+            j += 1;
+        }
+        i += 1;
+    }
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Number of features enumerated by `features!`. The detection cache
-    /// uses two `u64`s (lo/hi); bits 63 and 127 are reserved for the
-    /// per-word `INIT_BIT` sentinel in `cache.rs`, so the count must
-    /// stay ≤ 126.
-    const FEATURE_COUNT: usize = 73;
-    const _: () = assert!(FEATURE_COUNT <= 126);
 
     #[test]
     fn all_features_roundtrip_name() {
         for f in Feature::all() {
             assert_eq!(Feature::from_name(f.name()), Some(f), "{}", f.name());
-        }
-    }
-
-    #[test]
-    fn feature_count_matches_const() {
-        assert_eq!(Feature::all().count(), FEATURE_COUNT);
-    }
-
-    #[test]
-    fn bit_positions_unique_and_avoid_init_slots() {
-        let mut seen = [false; 128];
-        for f in Feature::all() {
-            let bit = f as u8 as usize;
-            assert!(bit < 128, "{} bit={} out of range", f.name(), bit);
-            assert!(
-                bit != 63,
-                "{} occupies bit 63 (lo INIT_BIT slot) — pick another",
-                f.name()
-            );
-            assert!(
-                bit != 127,
-                "{} occupies bit 127 (hi INIT_BIT slot) — pick another",
-                f.name()
-            );
-            assert!(!seen[bit], "duplicate bit {} ({})", bit, f.name());
-            seen[bit] = true;
         }
     }
 
