@@ -11,9 +11,11 @@
 
 #![allow(non_camel_case_types)]
 
-/// How a given feature is detected on Windows ARM64.
+/// How a given feature is detected on Windows ARM64. Used internally to
+/// decide whether the IPFP-only fast cache is sufficient or whether the
+/// registry decoder must run.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DetectionMethod {
+pub(crate) enum DetectionMethod {
     /// `IsProcessorFeaturePresent` covers this feature directly. Cost: one
     /// syscall per feature on first probe, then cached.
     Ipfp,
@@ -45,14 +47,16 @@ macro_rules! features {
             }
 
             /// Which detection backend confirms this feature on Windows ARM64.
-            pub const fn detection_method(self) -> DetectionMethod {
+            #[allow(dead_code, reason = "consumed by internal tests; classification is informational")]
+            pub(crate) const fn detection_method(self) -> DetectionMethod {
                 match self {
                     $(Feature::$variant => DetectionMethod::$method,)*
                 }
             }
 
             /// Parse a stdarch feature name into a `Feature`. `None` if unrecognized.
-            pub fn from_name(name: &str) -> Option<Self> {
+            #[allow(dead_code, reason = "internal-use lookup; tests exercise it")]
+            pub(crate) fn from_name(name: &str) -> Option<Self> {
                 match name {
                     $($name => Some(Feature::$variant),)*
                     _ => None,
@@ -168,12 +172,14 @@ features! {
     SsveFp8Fma = (72, "ssve_fp8fma",  Ipfp),
 }
 
-/// Total count of enumerated features.
-pub const FEATURE_COUNT: usize = 73;
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Number of features enumerated by `features!`. The detection cache
+    /// uses two `u64`s (lo/hi), so the count must stay ≤ 128.
+    const FEATURE_COUNT: usize = 73;
+    const _: () = assert!(FEATURE_COUNT <= 128);
 
     #[test]
     fn all_features_roundtrip_name() {

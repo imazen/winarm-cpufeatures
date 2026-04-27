@@ -1,8 +1,10 @@
 //! Smoke tests that compile and run on every supported target.
+//!
+//! Internal coherence checks (fast/full cache agreement, detection-method
+//! routing) live in `src/cache.rs`'s `#[cfg(test)] mod` because they need
+//! `pub(crate)` items. This file holds public-API-only assertions.
 
-use winarm_cpufeatures::{
-    DetectionMethod, Feature, Features, detected, detected_full, is_detected, is_detected_full,
-};
+use winarm_cpufeatures::{detected, detected_full};
 
 #[test]
 fn fast_macro_compiles_for_ipfp_features() {
@@ -34,51 +36,10 @@ fn full_macro_compiles_for_all_features() {
     let _ = detected_full!("frintts");
 }
 
-#[test]
-fn function_form_matches_macro() {
-    assert_eq!(detected!("sve"), is_detected(Feature::Sve));
-    assert_eq!(detected!("dotprod"), is_detected(Feature::Dotprod));
-    assert_eq!(detected_full!("rdm"), is_detected_full(Feature::Rdm));
-}
-
-#[test]
-fn full_implies_fast_for_ipfp_features() {
-    // For Ipfp-classified features, both caches must agree.
-    for f in Feature::all() {
-        if f.detection_method() == DetectionMethod::Ipfp {
-            assert_eq!(
-                is_detected(f),
-                is_detected_full(f),
-                "fast/full disagree for IPFP feature {}",
-                f.name()
-            );
-        }
-    }
-}
-
-#[test]
-fn current_snapshot_matches_individual_calls() {
-    let snap = Features::current();
-    for f in Feature::all() {
-        if f.detection_method() != DetectionMethod::Registry {
-            assert_eq!(snap.has(f), is_detected(f), "fast {} disagrees", f.name());
-        }
-    }
-
-    let snap_full = Features::current_full();
-    for f in Feature::all() {
-        assert_eq!(
-            snap_full.has(f),
-            is_detected_full(f),
-            "full {} disagrees",
-            f.name()
-        );
-    }
-}
-
 #[cfg(not(target_arch = "aarch64"))]
 #[test]
 fn non_aarch64_targets_detect_nothing() {
+    use winarm_cpufeatures::{Feature, Features};
     let snap = Features::current();
     let count = Feature::all().filter(|f| snap.has(*f)).count();
     assert_eq!(count, 0, "non-aarch64 targets must not claim any features");
@@ -99,7 +60,7 @@ fn non_windows_aarch64_matches_stdarch() {
             )*
         };
     }
-    // All 41 stable stdarch feature names that share the same spelling
+    // All 37 stable stdarch feature names that share the same spelling
     // between detected_full! and is_aarch64_feature_detected!.
     // SVE2 sub-features are excluded: stdarch uses dashes (e.g. "sve2-aes")
     // while this crate uses underscores (e.g. "sve2_aes").

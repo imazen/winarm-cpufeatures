@@ -17,8 +17,6 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
-#[cfg(test)]
-use crate::features::FEATURE_COUNT;
 use crate::features::Feature;
 
 const INIT_UNSET: u8 = 0;
@@ -49,7 +47,7 @@ static FULL_HI: AtomicU64 = AtomicU64::new(0);
 static REGISTRY_RUNTIME_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// A snapshot of a detection cache. Cheap to copy; `has` is a pure bit test.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Features {
     lo: u64,
     hi: u64,
@@ -93,9 +91,10 @@ impl Features {
         }
     }
 
-    /// Set a feature bit. Intended for constructing test fixtures.
+    /// Set a feature bit. Used by the IPFP and registry decoders to
+    /// populate the cache.
     #[inline]
-    pub const fn with(mut self, feature: Feature) -> Self {
+    pub(crate) const fn with(mut self, feature: Feature) -> Self {
         let bit = feature as u8;
         if bit < 64 {
             self.lo |= 1u64 << bit;
@@ -109,23 +108,12 @@ impl Features {
     pub fn iter(&self) -> impl Iterator<Item = Feature> + '_ {
         Feature::all().filter(move |f| self.has(*f))
     }
-
-    /// Raw bits. Low 64 bits cover `Feature` discriminants 0..64; high 64
-    /// bits cover 64..128.
-    pub const fn raw(&self) -> (u64, u64) {
-        (self.lo, self.hi)
-    }
-
-    /// Construct from raw bits.
-    pub const fn from_raw(lo: u64, hi: u64) -> Self {
-        Self { lo, hi }
-    }
 }
 
-/// Read from the fast (IPFP-only) cache. Use for features classified as
-/// [`DetectionMethod::Ipfp`].
-///
-/// [`DetectionMethod::Ipfp`]: crate::DetectionMethod::Ipfp
+/// Macro implementation detail: read from the fast (IPFP-only) cache.
+/// `detected!` expands to a call here; users should reach for the macro
+/// or for `Features::current().has(feature)`.
+#[doc(hidden)]
 #[inline]
 pub fn is_detected(feature: Feature) -> bool {
     ensure_fast();
@@ -137,12 +125,10 @@ pub fn is_detected(feature: Feature) -> bool {
     }
 }
 
-/// Read from the full (IPFP + registry) cache. Use for features classified
-/// as [`DetectionMethod::Registry`] or when the caller has opted into the
-/// slow probe via [`detected_full!`].
-///
-/// [`DetectionMethod::Registry`]: crate::DetectionMethod::Registry
-/// [`detected_full!`]: crate::detected_full!
+/// Macro implementation detail: read from the full (IPFP + registry)
+/// cache. `detected_full!` expands to a call here; users should reach
+/// for the macro or for `Features::current_full().has(feature)`.
+#[doc(hidden)]
 #[inline]
 pub fn is_detected_full(feature: Feature) -> bool {
     ensure_full();
@@ -207,11 +193,11 @@ pub fn set_registry_enabled(enabled: bool) {
 }
 
 /// Returns whether the registry-based detection layer is currently
-/// authorised at runtime.
-///
-/// Returns `false` on builds without the `registry` Cargo feature.
+/// authorised at runtime. Used by the full-cache probe path on Windows
+/// ARM64 builds with the `registry` Cargo feature.
+#[cfg(all(target_os = "windows", target_arch = "aarch64", feature = "registry"))]
 #[inline]
-pub fn is_registry_enabled() -> bool {
+pub(crate) fn is_registry_enabled() -> bool {
     REGISTRY_RUNTIME_ENABLED.load(Ordering::Acquire)
 }
 
@@ -238,11 +224,49 @@ mod tests {
     fn high_bit_features_round_trip() {
         // Pick a feature with discriminant ≥ 64 to exercise the hi word.
         let f = Features::EMPTY.with(Feature::SmeF64f64);
-        let (lo, hi) = f.raw();
-        assert_eq!(lo, 0);
-        assert_ne!(hi, 0);
         assert!(f.has(Feature::SmeF64f64));
+        // No low-word bits should be set when only a high-word feature is added.
+        for feat in Feature::all() {
+            if (feat as u8) < 64 {
+                assert!(!f.has(feat), "{} unexpectedly set", feat.name());
+            }
+        }
     }
 
-    const _: () = assert!(FEATURE_COUNT <= 128);
+    #[test]
+    fn full_implies_fast_for_ipfp_features() {
+        use crate::features::DetectionMethod;
+        // For Ipfp-classified features, both caches must agree.
+        for f in Feature::all() {
+            if f.detection_method() == DetectionMethod::Ipfp {
+                assert_eq!(
+                    is_detected(f),
+                    is_detected_full(f),
+                    "fast/full disagree for IPFP feature {}",
+                    f.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn current_snapshot_matches_individual_calls() {
+        use crate::features::DetectionMethod;
+        let snap = Features::current();
+        for f in Feature::all() {
+            if f.detection_method() != DetectionMethod::Registry {
+                assert_eq!(snap.has(f), is_detected(f), "fast {} disagrees", f.name());
+            }
+        }
+
+        let snap_full = Features::current_full();
+        for f in Feature::all() {
+            assert_eq!(
+                snap_full.has(f),
+                is_detected_full(f),
+                "full {} disagrees",
+                f.name()
+            );
+        }
+    }
 }
