@@ -92,13 +92,13 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
-// On nightly rustc *and* an aarch64 target, opt into the
-// stdarch_aarch64_feature_detection gate so we can delegate the 32
-// unstable feature names. `winarm_rustc_nightly` is set by build.rs when
-// rustc reports a nightly version. The `target_arch` predicate guards
-// against the gate being unrecognized on non-aarch64 nightly builds.
+// Opt into the stdarch_aarch64_feature_detection gate when the
+// `nightly-stdarch` feature is enabled, so we can delegate the 32 unstable
+// stdarch feature names on non-Windows aarch64 targets. The `target_arch`
+// predicate guards against the gate being unrecognized on non-aarch64
+// nightly builds. Requires nightly rustc.
 #![cfg_attr(
-    all(winarm_rustc_nightly, target_arch = "aarch64"),
+    all(feature = "nightly-stdarch", target_arch = "aarch64"),
     feature(stdarch_aarch64_feature_detection)
 )]
 

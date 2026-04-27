@@ -12,9 +12,10 @@
 //! `std::arch::is_aarch64_feature_detected!`. 41 of the 73 feature names
 //! are `#[stable]` on Rust 1.85; the remaining 32 are gated behind the
 //! `stdarch_aarch64_feature_detection` unstable feature and require
-//! nightly rustc. The `build.rs` sets `cfg(winarm_rustc_nightly)` when
-//! building with nightly so those names participate; on stable they
-//! return `false` (our crate is explicitly MSRV 1.85-stable-compatible).
+//! nightly rustc. Enabling the `nightly-stdarch` Cargo feature opts into
+//! that gate so the unstable names participate; without it, those 32
+//! names return `false` (matching what stable rustc would produce
+//! anyway).
 
 use crate::cache::Features;
 #[cfg(all(target_arch = "aarch64", not(target_os = "windows")))]
@@ -141,8 +142,9 @@ pub(crate) fn stdarch_delegate() -> Features {
     }
 
     // ── Nightly-only on Rust 1.85 — require #![feature(stdarch_aarch64_feature_detection)] ─
-    // build.rs emits cfg(winarm_rustc_nightly) when rustc reports nightly.
-    #[cfg(winarm_rustc_nightly)]
+    // Gated on the `nightly-stdarch` Cargo feature, which the user opts into
+    // explicitly when building with nightly rustc.
+    #[cfg(feature = "nightly-stdarch")]
     probe! {
         "cssc"         => Cssc,
         "ecv"          => Ecv,

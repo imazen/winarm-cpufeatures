@@ -32,6 +32,15 @@ default = []
 # of RegGetValueW calls on first probe; cached after that. Off by default —
 # matches what .NET 10 / pytorch-cpuinfo / Microsoft's own Windows runtime ship.
 registry = []
+# Opt into `#![feature(stdarch_aarch64_feature_detection)]` so non-Windows
+# aarch64 targets can detect the 32 stdarch feature names that are still
+# unstable on Rust 1.85 (cssc, ecv, faminmax, flagm2, fp8*, hbc, lse128,
+# lut, mops, pauth-lr, rcpc3, sme*, ssve-fp8*, sve2p1, sve-b16b16, wfxt,
+# fpmr). Requires nightly rustc. On stable, those names report `false`
+# from `detected_full!` on non-Windows targets — same as calling
+# `is_aarch64_feature_detected!` directly without the unstable gate.
+# Has no effect on Windows ARM64 (we don't delegate to stdarch there).
+nightly-stdarch = []
 # Enable the SVE execution test in `tests/sve_execution.rs`. Requires
 # nightly rustc (for `aarch64_unstable_target_feature`).
 nightly-sve = []
