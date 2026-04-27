@@ -1,0 +1,16 @@
+[package]
+name = "winarm-compile-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone (not part of the parent's workspace) so its target/ is isolated
+# and doesn't share build cache with the lib's own tests.
+[workspace]
+
+[dependencies]
+winarm-cpufeatures = { path = "../.." }
+
+[profile.dev]
+# Most representative of downstream consumer build pain — debug profile.
+incremental = false
