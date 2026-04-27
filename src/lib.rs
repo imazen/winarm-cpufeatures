@@ -5,12 +5,14 @@
 //!
 //! On `aarch64-pc-windows-msvc` with Rust 1.85, std's
 //! `is_aarch64_feature_detected!` is a thin wrapper around
-//! `IsProcessorFeaturePresent` (IPFP). Microsoft
-//! defines 56 `PF_ARM_*` constants in Windows SDK 10.0.26100.0 but the
-//! upstream stdarch backend only wires 17 of them, and Microsoft has never
-//! exposed ~30 stdarch feature names through any `PF_ARM_*` constant at all
-//! — including the headline miss `rdm`, which is mandatory on every
-//! Windows-on-ARM CPU.
+//! `IsProcessorFeaturePresent` (IPFP). Microsoft defines 56 `PF_ARM_*`
+//! constants in Windows SDK 10.0.26100.0 but the upstream stdarch backend
+//! only wires ~10 of them, and Microsoft has never exposed ~30 stdarch
+//! feature names through any `PF_ARM_*` constant at all — including the
+//! headline miss `rdm`, which is mandatory on every Windows-on-ARM CPU.
+//! [`rust-lang/rust#155856`](https://github.com/rust-lang/rust/pull/155856)
+//! closes 8 more once it lands stable; the registry-decoded names need a
+//! different mechanism, which this crate provides.
 //!
 //! ## Drop-in for std
 //!
@@ -93,6 +95,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 mod cache;
 mod features;
@@ -121,21 +124,23 @@ pub use features::Feature;
 // Cross-platform CI on aarch64 targets catches typos via std's
 // validation there.
 
-/// Cheap detection macro.
+/// Drop-in single-feature check, same call shape as
+/// `std::arch::is_aarch64_feature_detected!`.
 ///
-/// **On Windows ARM64**, reads the IPFP-only cache. Names that
+/// **On Windows ARM64**, reads the IPFP-only cache (one syscall on
+/// first probe, one Acquire load and a bit test thereafter). Names
 /// Microsoft has never exposed via `IsProcessorFeaturePresent`
 /// (Registry-classified — `paca`, `bti`, `dpb`, `flagm`, `mte`, `fhm`,
-/// `fcma`, `frintts`, `sm4`, etc.) silently return `false` — matching
+/// `fcma`, `frintts`, `sm4`, …) silently return `false`, matching
 /// std's behaviour. Use [`Features::current_full`] to actually detect
 /// those (requires the `registry` Cargo feature).
 ///
 /// **On non-Windows aarch64**, expands directly to
 /// `std::arch::is_aarch64_feature_detected!($name)`.
 ///
-/// **On non-aarch64**, accepts any string literal and returns `false`
-/// (std's macro doesn't compile on non-aarch64, so we can't passthrough
-/// to validate; cross-platform CI on aarch64 catches typos there).
+/// **On non-aarch64**, accepts any string literal and returns `false`.
+/// Std's macro doesn't compile on non-aarch64, so we can't passthrough
+/// to validate; cross-platform CI on aarch64 catches typos there.
 ///
 /// ```no_run
 /// if winarm_cpufeatures::is_aarch64_feature_detected_fast!("aes") {

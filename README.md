@@ -1,4 +1,11 @@
-# winarm-cpufeatures ![CI](https://img.shields.io/github/actions/workflow/status/imazen/winarm-cpufeatures/ci.yml?style=flat-square&label=CI) ![crates.io](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square) [![lib.rs](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/winarm-cpufeatures) ![docs.rs](https://img.shields.io/docsrs/winarm-cpufeatures?style=flat-square) ![license](https://img.shields.io/crates/l/winarm-cpufeatures?style=flat-square)
+# winarm-cpufeatures
+
+[![CI](https://img.shields.io/github/actions/workflow/status/imazen/winarm-cpufeatures/ci.yml?style=flat-square&label=CI)](https://github.com/imazen/winarm-cpufeatures/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square)](https://crates.io/crates/winarm-cpufeatures)
+[![lib.rs](https://img.shields.io/crates/v/winarm-cpufeatures?style=flat-square&label=lib.rs&color=blue)](https://lib.rs/crates/winarm-cpufeatures)
+[![docs.rs](https://img.shields.io/docsrs/winarm-cpufeatures?style=flat-square)](https://docs.rs/winarm-cpufeatures)
+![license](https://img.shields.io/crates/l/winarm-cpufeatures?style=flat-square)
+![MSRV](https://img.shields.io/badge/MSRV-1.85-blue?style=flat-square)
 
 AArch64 CPU feature detection that fills the Windows-on-ARM gap in `std::arch::is_aarch64_feature_detected!`.
 
@@ -20,6 +27,15 @@ sve-b16b16, sme, sme2, sme2p1, ...
 - **On Windows aarch64**: detects all 73 stdarch feature names, including the 32 std flags as nightly-only, on **stable Rust** without any feature gate. Probes every `PF_ARM_*` constant in Windows SDK 26100, derives RDM via the same DP/LSE inference .NET 10 uses, and (with `--features registry`) decodes the `HKLM\…\CentralProcessor\0\CP <hex>` `ID_AA64*_EL1` snapshots Windows publishes — same undocumented-but-stable approach LLVM, pytorch/cpuinfo, and Microsoft's own ONNX Runtime use.
 - **On non-Windows aarch64**: macros are a pure passthrough to `std::arch::is_aarch64_feature_detected!`. Std handles those targets correctly already; we add nothing. Stable feature names work; the 32 unstable names need the user's own nightly + `#![feature(stdarch_aarch64_feature_detection)]`, same as if you used std directly.
 - **On non-aarch64**: every documented name returns `false`. Lets cross-platform code use one spelling.
+
+## Install
+
+```sh
+cargo add winarm-cpufeatures                       # IPFP-only path
+cargo add winarm-cpufeatures --features registry   # IPFP + registry decoder
+```
+
+Documentation: [docs.rs/winarm-cpufeatures](https://docs.rs/winarm-cpufeatures).
 
 ## Drop-in for std
 
@@ -71,8 +87,41 @@ Calling our macro is the same cost as calling std's. Measured at 0.16s for 480 i
 
 ## MSRV
 
-Rust 1.85.
+Rust 1.85. Bumping MSRV is a minor-version change.
+
+## Versioning & stability
+
+Semantic versioning. The public API is the macro, the `Features` /
+`Feature` types, and `set_registry_enabled`. Private items (`is_detected`,
+the macro arms, the `cache` module internals) are `#[doc(hidden)]` and
+may change in any release.
+
+The registry decoder reads `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0\CP <hex>`,
+the same undocumented-but-stable AArch64 ID-register snapshot LLVM,
+pytorch/cpuinfo, ONNX Runtime, and Microsoft itself rely on. If
+Microsoft ever changes the layout, we'll cut a patch release; until
+then it's been the canonical Windows-ARM feature source for a decade.
+
+## Comparison to other crates
+
+- [`cpufeatures`](https://crates.io/crates/cpufeatures) (RustCrypto) is
+  the widely-used cross-platform feature detector but explicitly punts
+  on Windows-ARM and only exposes `aes`/`sha2`/`sha3` on aarch64. Use
+  both crates side-by-side: `cpufeatures` for x86 + Linux/macOS aarch64,
+  this crate for Windows-on-ARM.
+- [`aarch64-cpu`](https://crates.io/crates/aarch64-cpu) is a bare-metal
+  register-access crate for kernel/embedded code. Different domain.
+
+## Contributing
+
+Bug reports and PRs welcome — please file at
+[github.com/imazen/winarm-cpufeatures](https://github.com/imazen/winarm-cpufeatures).
+If you have access to AArch64 hardware not yet covered by
+`tests/hardware_assertions.rs` (especially Apple silicon, fresh
+Snapdragon X variants, or future SME-capable parts), contributing a
+known-feature-set assertion is the highest-leverage way to harden
+detection.
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0.
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE).

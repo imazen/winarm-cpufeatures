@@ -5,12 +5,35 @@ edition = "2024"
 rust-version = "1.85"
 authors = ["Imazen <support@imazen.io>"]
 license = "MIT OR Apache-2.0"
-description = "Fill the Windows-on-ARM gap in std::arch::is_aarch64_feature_detected! — wires every PF_ARM_* constant from Windows SDK 26100, derives FEAT_RDM the same way .NET 10 does, and (optionally, behind the `registry` feature) reads the AArch64 ID-register snapshots Windows publishes in the registry to cover the ~33 names Microsoft has never exposed via IsProcessorFeaturePresent."
+description = "AArch64 feature detection that fills the Windows-on-ARM gap in std::arch::is_aarch64_feature_detected!. Wires every PF_ARM_* constant from Windows SDK 26100; an opt-in registry decoder covers the ~33 names IPFP can't reach."
 repository = "https://github.com/imazen/winarm-cpufeatures"
+homepage = "https://github.com/imazen/winarm-cpufeatures"
 documentation = "https://docs.rs/winarm-cpufeatures"
 readme = "README.md"
 keywords = ["aarch64", "arm64", "cpu", "windows", "simd"]
-categories = ["hardware-support", "no-std", "os::windows-apis"]
+categories = ["hardware-support", "os::windows-apis"]
+include = [
+    "/src/**/*",
+    "/examples/**/*",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+# Render docs for the Windows ARM64 target so the registry-only items
+# and the Windows dispatch path are both visible on docs.rs.
+default-target = "aarch64-pc-windows-msvc"
+targets = [
+    "aarch64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
 
 [lib]
 
